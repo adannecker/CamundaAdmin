@@ -38,6 +38,63 @@
       </div>
     </div>
   </dialog>
+  <dialog id="process-cleanup-dialog" aria-labelledby="process-cleanup-title">
+    <div class="dialog-content">
+      <p class="eyebrow">Unwiderrufliche Aktion</p>
+      <h2 id="process-cleanup-title">Prozessinstanzen bereinigen?</h2>
+      <p id="process-cleanup-summary"></p>
+      <label class="confirmation-field" for="process-cleanup-confirmation">Bestätigung eingeben:</label>
+      <input id="process-cleanup-confirmation" type="text" autocomplete="off" spellcheck="false">
+      <div id="process-cleanup-dialog-error" class="notice" hidden></div>
+      <div class="dialog-actions">
+        <button id="process-cleanup-cancel" type="button">Abbrechen</button>
+        <button id="process-cleanup-confirm" class="danger" type="button" disabled>Alle beenden und löschen</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="definition-cleanup-dialog" aria-labelledby="definition-cleanup-title">
+    <div class="dialog-content">
+      <p class="eyebrow">Unwiderrufliche Aktion</p>
+      <h2 id="definition-cleanup-title">Deployte Definitionen löschen?</h2>
+      <p id="definition-cleanup-summary"></p>
+      <label class="confirmation-field" for="definition-cleanup-confirmation">Bestätigung eingeben:</label>
+      <input id="definition-cleanup-confirmation" type="text" autocomplete="off" spellcheck="false">
+      <div id="definition-cleanup-dialog-error" class="notice" hidden></div>
+      <div class="dialog-actions">
+        <button id="definition-cleanup-cancel" type="button">Abbrechen</button>
+        <button id="definition-cleanup-confirm" class="danger" type="button" disabled>Definitionen endgültig löschen</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="project-delete-dialog" aria-labelledby="project-delete-title">
+    <div class="dialog-content">
+      <p class="eyebrow">Unwiderrufliche Aktion</p>
+      <h2 id="project-delete-title">Projekte endgültig löschen?</h2>
+      <p id="project-delete-summary"></p>
+      <label class="confirmation-field" for="project-delete-confirmation">Bestätigung eingeben:</label>
+      <input id="project-delete-confirmation" type="text" autocomplete="off" spellcheck="false">
+      <div id="project-delete-progress" class="project-delete-progress" hidden></div>
+      <div id="project-delete-error" class="notice" hidden></div>
+      <div class="dialog-actions">
+        <button id="project-delete-cancel" type="button">Abbrechen</button>
+        <button id="project-delete-confirm" class="danger" type="button" disabled>Ausgewählte Projekte löschen</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="cluster-delete-dialog" aria-labelledby="cluster-delete-title">
+    <div class="dialog-content">
+      <p class="eyebrow">Unwiderrufliche Aktion</p>
+      <h2 id="cluster-delete-title">Cluster endgültig löschen?</h2>
+      <p id="cluster-delete-summary"></p>
+      <label class="confirmation-field" for="cluster-delete-confirmation">Bestätigung eingeben:</label>
+      <input id="cluster-delete-confirmation" type="text" autocomplete="off" spellcheck="false">
+      <div id="cluster-delete-error" class="notice" hidden></div>
+      <div class="dialog-actions">
+        <button id="cluster-delete-cancel" type="button">Abbrechen</button>
+        <button id="cluster-delete-confirm" class="danger" type="button" disabled>Cluster endgültig löschen</button>
+      </div>
+    </div>
+  </dialog>
   <script src="/app.js"></script>
 </body>
 </html>

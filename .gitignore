@@ -1,6 +1,9 @@
 # Local Camunda access data must never be committed.
 credentials_*.txt
 access.txt
+.env
 
 # Runtime files
 node_modules/
+*.log
+definition-cleanup-state.json
