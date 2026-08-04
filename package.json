@@ -1,0 +1,9 @@
+{
+  "name": "camunda-cleanup",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lokale, lesende Übersicht für Camunda-Organisationen",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

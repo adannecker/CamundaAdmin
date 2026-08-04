@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camunda Cleanup</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <aside>
+    <div class="brand"><span>Camunda</span> Cleanup</div>
+    <p class="sidebar-label">Organisationen</p>
+    <nav id="cluster-nav" aria-label="Organisationen"></nav>
+    <div class="read-only">Geschützter Löschmodus<br><small>Jede Löschung muss einzeln bestätigt werden.</small></div>
+  </aside>
+  <main>
+    <header>
+      <div><p class="eyebrow">Camunda Console</p><h1 id="page-title">Basel</h1></div>
+      <button id="refresh" type="button">Aktualisieren</button>
+    </header>
+    <nav id="resource-nav" class="tabs" aria-label="Ressourcen"></nav>
+    <section class="panel" aria-live="polite">
+      <div class="panel-heading"><div><h2 id="list-title">Member</h2><p id="description">Lade die aktuellen Daten …</p></div><span id="count" class="count"></span></div>
+      <div id="notice" class="notice" hidden></div>
+      <div id="content" class="loading">Daten werden geladen …</div>
+    </section>
+  </main>
+  <dialog id="delete-dialog" aria-labelledby="delete-title">
+    <div class="dialog-content">
+      <p class="eyebrow">Unwiderrufliche Aktion</p>
+      <h2 id="delete-title">Member löschen?</h2>
+      <p id="delete-summary"></p>
+      <div id="delete-progress" class="delete-progress" hidden></div>
+      <div id="delete-errors" class="notice" hidden></div>
+      <div class="dialog-actions">
+        <button id="delete-cancel" type="button">Abbrechen</button>
+        <button id="delete-confirm" class="danger" type="button">Endgültig löschen</button>
+      </div>
+    </div>
+  </dialog>
+  <script src="/app.js"></script>
+</body>
+</html>

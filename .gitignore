@@ -1,0 +1,6 @@
+# Local Camunda access data must never be committed.
+credentials_*.txt
+access.txt
+
+# Runtime files
+node_modules/
