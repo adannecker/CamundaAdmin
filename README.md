@@ -15,3 +15,8 @@ Der Server liest credentials_basel.txt, credentials_brugg.txt und credentials_ol
 Live bestätigt Console-Zugriff getrennt vom Runtime-Zugriff. Fehlende Runtime-Zugangsdaten werden ausdrücklich angezeigt.
 
 Die leeren Vorlagen credentials_basel.example, credentials_brugg.example und credentials_olten.example können lokal als entsprechende .txt-Dateien kopiert und mit den exportierten Camunda-Zugangsdaten befüllt werden. Echte Zugangsdaten bleiben ausschliesslich in den ignorierten .txt-Dateien.
+
+## Weiterarbeit auf einem anderen Rechner
+
+Siehe [HANDOFF.md](HANDOFF.md) für Einrichtung, geprüften Stand, Berechtigungen und offene Aufgaben.
+
