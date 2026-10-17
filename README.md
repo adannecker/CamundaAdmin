@@ -1,37 +1,17 @@
-# Camunda Cleanup
+# Camunda Verwaltung
 
-Lokale, zunächst rein lesende Übersicht für die Camunda-Organisationen Basel, Brugg und Olten.
+Lokaler Node.js-Dienst für Basel, Brugg und Olten. Node.js 18 oder neuer; keine npm-Abhängigkeiten. Start: npm start. Adresse: http://127.0.0.1:3300
 
-## Starten
+## Bereiche
 
-Voraussetzung ist Node.js 18 oder neuer. Es werden keine Pakete installiert.
-
-```powershell
-npm start
-```
-
-Danach die Oberfläche unter <http://127.0.0.1:3300> öffnen.
+- Live: lesende OAuth-/Console-Prüfung und Clusterliste; Operate-Prüfung nur bei vollständigen Runtime-Credentials.
+- Cleanup: ausgegraut und inaktiv. Der Server sperrt sämtliche schreibenden HTTP-Methoden. Bestehende Verwaltungs- und Cleanup-Implementierungen bleiben im Code erhalten.
+- Studenten hinzufügen: Semikolon-Liste prüfen, Duplikate entfernen und ungültige E-Mail-Adressen anzeigen. Einladungen sind noch nicht implementiert/freigeschaltet.
 
 ## Zugangsdaten
 
-Die Zugangsdaten verbleiben in den bestehenden lokalen Dateien:
+Der Server liest credentials_basel.txt, credentials_brugg.txt und credentials_olten.txt lokal. Secrets und Tokens werden nicht an den Browser ausgegeben. Zugangsdaten sind per .gitignore ausgeschlossen.
 
-- `credentials_basel - test.txt`
-- `credentials_brugg.txt`
-- `credentials_olten.txt`
+Live bestätigt Console-Zugriff getrennt vom Runtime-Zugriff. Fehlende Runtime-Zugangsdaten werden ausdrücklich angezeigt.
 
-Sie werden nur vom lokalen Server gelesen. Der Browser erhält weder Client Secret noch OAuth-Token. Die Dateien sind per `.gitignore` vom Commit ausgeschlossen.
-
-## Aktueller Umfang
-
-- Linke Navigation: Basel, Brugg, Olten
-- Reiter: Member, Projekte, Connectors, Cluster
-- Daten werden bei Bedarf direkt aus Camunda gelesen.
-- Token werden im Speicher zwischengespeichert, um OAuth-Rate-Limits zu vermeiden.
-- Es gibt absichtlich noch keine Schreib- oder Löschoperationen.
-
-Für **Projekte** wird die Web-Modeler-API verwendet. Die verwendeten Credentials brauchen dafür die Leseberechtigung für Web Modeler. Die Reiter **Member** und **Cluster** verwenden die Administration-API. Der Reiter **Connectors** ist für die organisations-/clusterbezogene Connector-Verwaltung vorbereitet; ob diese Abfrage zulässig ist, hängt vom Scope `Connector Secrets` der Credentials ab.
-
-## Nächster Schritt
-
-Als nächstes können wir die vorhandenen Löschbeispiele in sichere Abläufe überführen: erst filterbare Vorschau, dann explizite Mehrfachauswahl und eine Bestätigung vor jedem endgültigen Löschen.
+Die leeren Vorlagen credentials_basel.example, credentials_brugg.example und credentials_olten.example können lokal als entsprechende .txt-Dateien kopiert und mit den exportierten Camunda-Zugangsdaten befüllt werden. Echte Zugangsdaten bleiben ausschliesslich in den ignorierten .txt-Dateien.

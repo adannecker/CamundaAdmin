@@ -804,6 +804,26 @@ function serveStatic(response, filename, type) {
 
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
+  // Cleanup and administration writes remain disabled until explicitly enabled in code.
+  if (!['GET', 'HEAD'].includes(request.method)) return sendJson(response, 403, { error: 'Schreibaktionen sind derzeit deaktiviert.' });
+  const liveMatch = url.pathname.match(/^\/api\/(basel|brugg|olten)\/live$/);
+  if (request.method === 'GET' && liveMatch) {
+    const checkedAt = new Date().toISOString();
+    try {
+      const connection = await consoleConnection(liveMatch[1]);
+      const list = await requestJson(connection.baseUrl + '/clusters', { headers: connection.headers, signal: AbortSignal.timeout(20000) }, 'Cluster');
+      let runtime = { ok: false, configured: false, message: 'Keine vollständigen Runtime-Zugangsdaten konfiguriert.' };
+      try {
+        const process = processConnection(liveMatch[1]);
+        runtime.configured = true;
+        const token = await getClusterAccessToken(process.credentials, 'operate.camunda.io');
+        await requestJson(process.operateBaseUrl + '/v1/process-instances/search', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ size: 1 }), signal: AbortSignal.timeout(20000) }, 'Runtime');
+        runtime = { ok: true, configured: true, message: 'Operate lesend erreichbar.' };
+      } catch (error) { if (runtime.configured) runtime.message = error.message; }
+      return sendJson(response, 200, { ok: true, checkedAt, runtime, clusters: list.map(item => ({ name: item.name, status: item.status || item.state || 'Unbekannt', version: item.generation?.name || '–', region: item.region?.name || '–' })) });
+    } catch (error) { return sendJson(response, 200, { ok: false, checkedAt, error: error.message }); }
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/clusters') {
     return sendJson(response, 200, Object.entries(clusters).map(([id, cluster]) => ({ id, name: cluster.name })));
   }
@@ -1035,6 +1055,7 @@ http.createServer(async (request, response) => {
     }
   }
   if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return serveStatic(response, 'index.html', 'text/html; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/dashboard.js') return serveStatic(response, 'dashboard.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/app.js') return serveStatic(response, 'app.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/styles.css') return serveStatic(response, 'styles.css', 'text/css; charset=utf-8');
   response.writeHead(404);
