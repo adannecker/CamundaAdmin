@@ -1,4 +1,7 @@
-# Camunda Verwaltung
+# Camunda Admin
+
+Serverbetrieb mit Keycloak-AAI und Docker: [Deployment](deploy/README.md).
+
 
 Lokaler Node.js-Dienst für Basel, Brugg und Olten. Node.js 18 oder neuer; keine npm-Abhängigkeiten. Für den Excel-Import zusätzlich Python 3 (Standardbibliothek). Start: npm start. Adresse: http://127.0.0.1:3300
 

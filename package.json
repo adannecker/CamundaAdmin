@@ -1,5 +1,5 @@
 {
-  "name": "camunda-cleanup",
+  "name": "camunda-admin",
   "private": true,
   "version": "0.1.0",
   "description": "Lokale Camunda-Verwaltung mit Klassenimport, Gruppenrechten, Dozentenressourcen und Cleanup",
@@ -8,5 +8,8 @@
     "test": "node --test",
     "onboard": "node onboard.js",
     "check:openai": "node check-openai.js"
+  },
+  "dependencies": {
+    "openid-client": "6.8.8"
   }
 }

@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Camunda Verwaltung</title><link rel="stylesheet" href="/styles.css">
+  <title>Camunda Admin</title><link rel="stylesheet" href="/styles.css">
   <style>
     main{flex:1;min-width:0;max-width:1400px}.sections{display:grid;gap:8px}.sections button{font:inherit;text-align:left;padding:14px;border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer}.sections button.active{background:#22345c;color:#61d7b2}
     .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}.card{padding:20px;border:1px solid #dce3ee;border-radius:10px;background:#fff}.card h3{margin-top:0}.badge{display:inline-block;padding:5px 9px;border-radius:8px;background:#edf0f5}.ok{background:#e7f8f2;color:#14755b}.bad{background:#fff0f0;color:#9c2f2f}.muted{color:#68758a;font-size:14px;line-height:1.6}
@@ -18,7 +18,7 @@
 </head>
 <body>
 <aside>
-  <div class="brand"><span>Camunda</span> Verwaltung</div><p class="sidebar-label">Bereiche</p>
+  <div class="brand"><span>Camunda</span> Admin</div><p class="sidebar-label">Bereiche</p>
   <nav class="sections"><button class="active" data-section="live">Live</button><button data-section="cleanup">Cleanup · Analyse</button><button data-section="students">Klassen &amp; Gruppen</button><button data-section="setup">Admin · Standorte</button><button data-section="admin">Admin · Dozenten</button></nav>
   <div class="read-only">Verwaltung mit Vorschau<br><small>Cleanup nur nach Auswahl und Bestätigung.</small></div>
 </aside>
@@ -101,6 +101,7 @@
 <dialog id="lecturer-resource-dialog" class="cleanup-dialog" aria-labelledby="lecturer-resource-title"><div class="dialog-content"><h2 id="lecturer-resource-title">Private Dozentenressourcen</h2><div id="lecturer-resource-preview"></div><label class="cleanup-ack"><input id="lecturer-resource-ack" type="checkbox">Ich habe die geplante Änderung und ihre Folgen geprüft.</label><p id="lecturer-resource-result" role="status"></p><div class="dialog-actions"><button id="lecturer-resource-close">Schließen</button><button id="lecturer-resource-apply" class="action" disabled>Änderung anwenden</button></div></div></dialog>
 <dialog id="class-dialog" class="cleanup-dialog" aria-labelledby="class-dialog-title"><div class="dialog-content"><h2 id="class-dialog-title">Klassenänderung vorbereiten</h2><div id="class-dialog-preview"></div><label class="cleanup-ack"><input id="class-dialog-ack" type="checkbox">Ich habe die Zuordnung, Einladungen und geplanten Rechteänderungen geprüft.</label><div id="class-dialog-result" role="status" aria-live="polite"></div><div class="dialog-actions"><button id="class-dialog-close">Schließen</button><button id="class-dialog-apply" class="action" disabled>Änderung anwenden</button></div></div></dialog>
 <dialog id="class-import-error" aria-labelledby="class-import-error-title" aria-describedby="class-import-error-message"><div class="dialog-content"><h2 id="class-import-error-title">Excel-Analyse nicht möglich</h2><p id="class-import-error-message" role="alert"></p><div class="dialog-actions"><button id="class-import-error-close" type="button">Verstanden</button></div></div></dialog>
+<script src="/session.js"></script>
 <script src="/wait-overlay.js"></script>
 <script src="/dashboard.js"></script>
 <script src="/admin.js"></script>

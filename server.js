@@ -2,6 +2,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const crypto = require('node:crypto');
+const { createWebAuth, settings: authSettings } = require('./lib/web-auth');
 const { CamundaApi, readCredentials: readApiCredentials } = require('./lib/camunda-api');
 const { Cleanup } = require('./lib/cleanup');
 const { LecturerResources } = require('./lib/lecturer-resources');
@@ -14,7 +15,11 @@ const { SiteSetup, loadSetup } = require('./lib/site-setup');
 
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 3300);
-const ROOT = __dirname;
+// Validate the bind/auth configuration before loading state or starting workers.
+authSettings(process.env);
+const APP_ROOT = __dirname;
+const ROOT = process.env.CAMUNDA_DATA_DIR || __dirname;
+let webAuth;
 const DEFINITION_STATE_FILE = path.join(ROOT, 'definition-cleanup-state.json');
 const ADMIN_CONFIG_FILE = path.join(ROOT, 'admin-config.json');
 const RUNTIME_CLEANUP_ENABLED = false;
@@ -46,8 +51,6 @@ const lecturerResources = new LecturerResources({ root: ROOT, contextForSite: cl
 const classroom = new Classroom({ root: ROOT, contextForSite: cleanupContext, cleanup });
 // Internal service worker; runs only while this local server is running.
 const completeClassAccess = () => classroom.access.tick().catch(() => console.error('Automatische Klassen-Zuweisung konnte nicht geprüft werden.'));
-setInterval(completeClassAccess, 60000).unref();
-setTimeout(completeClassAccess, 5000).unref();
 
 const resources = {
   members: { label: 'Member', kind: 'console', method: 'GET', path: 'members' },
@@ -824,19 +827,22 @@ function sendJson(response, status, data) {
 }
 
 function serveStatic(response, filename, type) {
-  fs.readFile(path.join(ROOT, 'public', filename), (error, data) => {
+  fs.readFile(path.join(APP_ROOT, 'public', filename), (error, data) => {
     if (error) {
       response.writeHead(404);
       response.end('Not found');
       return;
     }
     response.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
-    response.end(data);
+    response.end(filename === 'index.html' ? webAuth.render(data.toString('utf8'), response.authSession) : data);
   });
 }
 
-http.createServer(async (request, response) => {
-  const url = new URL(request.url, `http://${request.headers.host}`);
+async function handleRequest(request, response) {
+  const authorized = await webAuth.authorize(request, response);
+  if (!authorized) return;
+  const { url } = authorized;
+  response.authSession = authorized.session;
   const clusterStartRoute = url.pathname.match(/^\/api\/(basel|brugg|olten)\/clusters\/start$/);
   if (request.method === 'POST' && clusterStartRoute) {
     if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Clusterstart nur lokal mit JSON und passender Herkunft erlaubt.' });
@@ -1180,10 +1186,31 @@ http.createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/site-setup.js') return serveStatic(response, 'site-setup.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/cleanup.js') return serveStatic(response, 'cleanup.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/wait-overlay.js') return serveStatic(response, 'wait-overlay.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/session.js') return serveStatic(response, 'session.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/lecturer-resources.js') return serveStatic(response, 'lecturer-resources.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/classroom.js') return serveStatic(response, 'classroom.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/app.js') return serveStatic(response, 'app.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/styles.css') return serveStatic(response, 'styles.css', 'text/css; charset=utf-8');
   response.writeHead(404);
   response.end('Not found');
-}).listen(PORT, HOST, () => console.log(`Camunda Cleanup läuft auf http://${HOST}:${PORT}`));
+}
+
+async function start() {
+  webAuth = await createWebAuth();
+  const server = http.createServer((request, response) => {
+    handleRequest(request, response).catch(() => {
+      console.error('Anfrage konnte nicht verarbeitet werden.');
+      if (!response.headersSent) sendJson(response, 500, { error: 'Anfrage fehlgeschlagen.' });
+      else response.end();
+    });
+  });
+  server.listen(PORT, HOST, () => {
+    console.log(`Camunda Admin läuft auf http://${HOST}:${PORT}${webAuth.config.basePath}/ (${webAuth.config.mode})`);
+    if (process.env.CLASS_ACCESS_WORKER !== 'disabled') {
+      setInterval(completeClassAccess, 60000).unref();
+      setTimeout(completeClassAccess, 5000).unref();
+    }
+  });
+  process.on('SIGTERM', () => server.close(() => process.exit(0)));
+}
+start().catch(() => { console.error('Camunda Admin konnte nicht sicher gestartet werden. OIDC-/Serverkonfiguration prüfen.'); process.exitCode = 1; });

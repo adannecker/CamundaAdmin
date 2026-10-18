@@ -1,4 +1,4 @@
-# Übergabe CamundaCleanup
+# Übergabe CamundaAdmin
 
 ## Ergänzung 18.10.2026: Vorbereitete Einladungen und automatische Benutzerzuweisung
 
@@ -8,7 +8,7 @@ Klassen-/Standortsperren und manager.busy koordinieren mit Cleanup, Anlage und l
 
 Alle **137 Tests erfolgreich**, darunter sechs neue Tests für Vorabzuweisung, Neustart-/Queuefortsetzung ohne neue Einladung, Konfigurations-/Scope-/Privilegschutz und Cleanup-Sperren, verzögerte Workspace-Sichtbarkeit, nachträglich verfügbare Runtime-Konten sowie definitive Pending-Abweisung/Pausieren. Dienst nach Identitäts-/Ruheprüfung neu gestartet: PID **35436**. Für exakt den schon bestätigten Basler Samstags-Testentwurf `class-ab57c1ad95fe83f637820b19` mit nur mb@achimsweb.de die Automatik per lokalem API aktiviert. Erster echter Worker-Lauf hat den Workspace-Zugriff ergänzt (`workspaceAccessAttempts: submitted`); danach laut Bericht ausschließlich Runtime-Konto unbekannt, einmal anmelden. Keine zusätzliche Organisationseinladung oder Ressourcenanlage. Anschließender echter Worker-Lauf nach Verfügbarkeit des Runtime-Kontos vollständig erfolgreich: Oberfläche Eingerichtet / Alle Benutzerzugriffe sind eingerichtet. Kein weiterer manueller Einrichtungslauf. Screenshot class-auto-access.png dokumentiert den fertigen Zustand. Ursprünglicher Tab 40 mit echter noch nicht übernommener Excel-Vorschau blieb unberührt; dessen Preview-ID wird durch Dienstneustart ungültig und muss vor späterer Übernahme neu erzeugt werden.
 
-Benutzer erwägt Docker auf dauerhaft laufendem Server und fragt nach SSH-Zugang. Noch kein Server genannt, keine Verbindung und keine Docker-Dateien/Deployment erstellt. OpenSSH und scp lokal bestätigt unter C:/Windows/System32/OpenSSH. Anwendung ist weiterhin localhost-gebunden; Serverbetrieb benötigt persistente Zustandsablage und passende geschützte Erreichbarkeit/Origin-Konfiguration. Keine ungefragte öffentliche Freigabe.
+Servermigration nach /opt/fhnw/camundaadmin auf gpmpmwebserver ist eingerichtet; OIDC, Docker und Betrieb siehe deploy/README.md. Zugriff zunächst ausschließlich für den bestätigten AAI-Owner.
 
 ## Ergänzung 18.10.2026: Klarer Anlagebutton mit durchgehendem Overlay
 
@@ -73,7 +73,7 @@ Stand: 17. Oktober 2026. Diese Datei enthält keine Secrets. Externe Zustände u
 
 ## Auf einem anderen Rechner starten
 
-1. Repository https://github.com/adannecker/CamundaCleanup klonen bzw. aktualisieren.
+1. Repository https://github.com/adannecker/CamundaAdmin klonen bzw. aktualisieren.
 2. Node.js installieren (laut Projekt mindestens 18; eine unterstützte LTS-Version verwenden). Keine zusätzlichen npm-Pakete erforderlich.
 3. credentials_basel.example, credentials_brugg.example und credentials_olten.example jeweils nach credentials_basel.txt, credentials_brugg.txt und credentials_olten.txt kopieren.
 4. Aktuelle exportierte Administration-API-Zugangsdaten lokal eintragen. Die Beispieldateien sind absichtlich leer. Der Parser unterstützt export KEY="value" sowie einfache und doppelte Anführungszeichen.
