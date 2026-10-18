@@ -53,9 +53,11 @@ test('creation preview holds the overlay until the JSON body is ready and requir
   assert.equal(f.element('class-dialog').open, true);
   assert.equal(f.element('class-dialog-apply').hidden, true);
   assert.equal(f.tasks[0].ended, false);
-  f.preview.resolve({ previewId: 'preview-1', groups: [{ name: 'Teacher_Sa_Team 1', students: 1, adminEmail: 'teacher@example.org' }], invitations: ['test@example.org'], changes: ['Tenant und Rechte anlegen'] });
+  f.preview.resolve({ previewId: 'preview-1', groups: [{ name: 'Teacher_Sa_Team 1', students: 1, adminEmail: 'teacher@example.org', projects: [{ name: 'Projektarbeit 1', action: 'reuse' }, { name: 'Projektarbeit 2', action: 'create' }] }], invitations: ['test@example.org'], changes: ['Tenant und Rechte anlegen'] });
   await settle();
   assert.equal(f.tasks[0].ended, true);
+  assert.match(f.element('class-dialog-preview').innerHTML, /Projektarbeit 1 \(vorhanden\)/);
+  assert.match(f.element('class-dialog-preview').innerHTML, /Projektarbeit 2 \(anlegen\)/);
   assert.equal(f.element('class-dialog-apply').textContent, 'Jetzt in Camunda anlegen');
   assert.equal(f.element('class-dialog-apply').disabled, true);
   await f.element('class-dialog-apply').listeners.click();

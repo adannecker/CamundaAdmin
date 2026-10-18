@@ -25,7 +25,8 @@ function fixture(t, options = {}) {
       const filter = request.body?.filter || {}, wid = filter.workspaceKey?.$eq;
       if (endpoint === '/workspaces/search') return page(state.workspaces.filter(w => !filter.name || w.name === filter.name.$eq));
       if (endpoint === '/members/search') return page(wid ? state.wm[wid] || [] : Object.values(state.wm).flat());
-      if (endpoint === '/projects/search') return page([]);
+      if (endpoint === '/projects/search') return page((state.projects || []).filter(p => !wid || p.workspaceKey === wid));
+      if (endpoint === '/projects' && request.method === 'POST') { record(endpoint, request); state.projects ||= []; const p = { projectKey: 'p' + (state.projects.length + 1), ...request.body }; state.projects.push(p); return p; }
       if (endpoint === '/workspaces' && request.method === 'POST') { record(endpoint, request); const w = { workspaceKey: 'w' + (state.workspaces.length + 1), name: request.body.name }; state.workspaces.push(w); state.wm[w.workspaceKey] = []; state.environments[w.workspaceKey] = []; return w; }
       const p = endpoint.split('/').map(decodeURIComponent);
       if (p[1] === 'workspaces' && p[3] === 'members') { record(endpoint, request); if (request.method === 'POST') state.wm[p[2]].push(request.body); else if (request.method === 'DELETE') state.wm[p[2]] = state.wm[p[2]].filter(m => m.email !== p[4]); else throw Error('Unexpected member action'); return null; }
@@ -81,6 +82,7 @@ test('import and local group edits do not write to Camunda and use lecturer/day/
 test('database-only class provisioning persists verified assignments and receipts without recreating JSON files', async t => {
   const f = fixture(t, { database: true }), c = await f.draft();
   const result = await f.provision(c); assert.equal(result.status, 'completed', result.error); assert.equal(result.classroom.status, 'ready');
+  for (const group of result.classroom.groups) assert.deepEqual(f.state.projects.filter(p => p.workspaceKey === group.workspaceKey).map(p => p.name), ['Projektarbeit 1', 'Projektarbeit 2']);
   const store = dataStore.getStore(f.root); assert.equal(store.db.prepare('SELECT count(*) AS n FROM class_students').get().n, f.people.length);
   assert.equal(store.db.prepare("SELECT count(*) AS n FROM receipts WHERE kind='class' AND status='completed'").get().n, 1);
   assert.equal(fs.readdirSync(f.root).filter(file => file.endsWith('.json')).length, 0);
@@ -96,6 +98,19 @@ test('database-only pending assignments continue after reopening the database wi
   assert.equal(f.manager.get(result.classroom.id).status, 'ready');
   assert.equal(f.writes.filter(w => w.endpoint === '/members/one%40example.org').length, 1);
   assert.equal(fs.readdirSync(f.root).filter(file => file.endsWith('.json')).length, 0);
+});
+
+test('existing groups can receive only the missing projects without runtime or invitation changes', async t => {
+  const f = fixture(t, { database: true }), result = await f.provision(await f.draft());
+  const c = f.manager.get(result.classroom.id);
+  for (const g of c.groups) { delete g.projects; delete g.projectCreateAttempts; }
+  f.manager.save({ schemaVersion: 1, classes: [c] });
+  const existing = f.state.projects[0]; f.state.projects = [existing, { projectKey: 'extra', workspaceKey: c.groups[0].workspaceKey, name: 'Eigene Arbeit' }];
+  const before = f.writes.length, filled = await f.manager.completeProjects(c.id);
+  assert.equal(filled.classroom.status, 'ready'); assert.equal(f.writes.length - before, 5);
+  assert.ok(f.writes.slice(before).every(w => w.endpoint === '/projects'));
+  const count = f.writes.length; await f.manager.completeProjects(c.id); assert.equal(f.writes.length, count);
+  assert.ok(f.state.projects.some(p => p.projectKey === 'extra')); assert.ok(f.state.projects.some(p => p.projectKey === existing.projectKey));
 });
 
 test('a completely cleaned class can be imported anew without reusing old invitation receipts or deleting its history', async t => {
