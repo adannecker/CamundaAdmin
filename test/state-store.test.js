@@ -61,6 +61,12 @@ test('a failed relational write rolls back both original document and projection
   assert.equal(readText(f.file('classes.local.json')), before); assert.equal(store.db.prepare('SELECT count(*) AS n FROM class_groups').get().n, 1);
 });
 
+test('migration refuses operation locks but does not treat package-lock.json as an application lock', t => {
+  const f = fixture(t); fs.writeFileSync(f.file('package-lock.json'), '{}'); fs.writeFileSync(f.file('classes-lock.local.json'), '');
+  assert.throws(() => f.open(), /Sperrdatei/); fs.unlinkSync(f.file('classes-lock.local.json'));
+  assert.ok(f.open()); assert.equal(f.store.names().includes('package-lock.json'), false);
+});
+
 test('invalid JSON aborts migration atomically; cleanup refuses changed or unimported files and retains credentials', t => {
   const f = fixture(t); fs.writeFileSync(f.file('bad.local.json'), '{invalid');
   assert.throws(() => f.open()); assert.equal(fs.existsSync(f.file('classes.local.json')), true);
