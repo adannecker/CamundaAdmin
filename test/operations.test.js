@@ -59,7 +59,7 @@ function assignmentsFixture(t) {
     return page(state.workspace ? [{ email: 'student@example.org', role: 'editor' }] : []);
   }, async console(endpoint) { assert.equal(endpoint, '/members'); return [{ email: 'student@example.org', invitePending: state.orgPending, roles: ['modeler'] }]; } };
   const runtimeApi = { async runtime(_base, endpoint, options) {
-    records.push({ endpoint, options }); assert.ok(endpoint.endsWith('/search')); assert.equal(options.method, 'POST'); if (state.failRuntime) throw Object.assign(Error(), { status: 403 });
+    records.push({ endpoint, options }); assert.ok(endpoint.endsWith('/search')); assert.equal(options.method, 'POST'); if (state.failRuntime) throw Object.assign(Error(), { status: typeof state.failRuntime === 'number' ? state.failRuntime : 403 });
     if (endpoint.includes('/users/search')) return page(state.runtime ? [{ username: 'student@example.org' }] : []);
     if (endpoint.includes('/roles/search')) return page([{ roleId: 'studierende' }]);
     if (endpoint.includes('/tenants/')) return page([{ groupId: 'group-1' }]);
@@ -94,6 +94,17 @@ test('a formerly completed class with subsequently missing access requires revie
   const result = await f.service.get({}, true);
   assert.equal(result.classes[0].automatic.status, 'needs_review');
   assert.equal(result.summary.ready, 0); assert.ok(result.classes[0].issues.some(s => s.includes('früheren Einrichtungsabschluss')));
+});
+
+test('rate-limited runtime reads show their cause for active students and recover without changing rights', async t => {
+  const f = assignmentsFixture(t); Object.assign(f.state, { orgPending: false, workspace: true, runtime: true, failRuntime: 429 });
+  f.c.autoAccess.lastError = 'OAuth: HTTP 429';
+  let result = await f.service.get({}, true), row = result.classes[0].groups[0].students[0];
+  assert.equal(row.organization.state, 'ready'); assert.equal(row.workspace.state, 'ready');
+  for (const key of ['runtime', 'rights']) { assert.equal(row[key].state, 'unknown'); assert.match(row[key].detail, /HTTP 429/); }
+  assert.equal(row.ready, false); assert.equal(result.classes[0].automatic.lastError, 'OAuth: HTTP 429');
+  f.state.failRuntime = false; result = await f.service.get({}, true); assert.equal(result.summary.ready, 1);
+  assert.ok(f.records.every(r => !r.options || r.options.method === 'POST' && r.endpoint.endsWith('/search')));
 });
 
 test('confirmed cleanup reconciles all targets, disables automation and hides retired students from pending totals', async t => {
