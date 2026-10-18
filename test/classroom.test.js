@@ -6,10 +6,11 @@ const path = require('node:path');
 const { Classroom } = require('../lib/classroom');
 const { Cleanup } = require('../lib/cleanup');
 const { ApiError } = require('../lib/camunda-api');
+const dataStore = require('../lib/state-store');
 
 function fixture(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'camunda-class-'));
-  t.after(() => { for (const file of fs.readdirSync(root)) fs.unlinkSync(path.join(root, file)); fs.rmdirSync(root); });
+  t.after(() => { dataStore.getStore(root)?.close(); for (const file of fs.readdirSync(root)) fs.unlinkSync(path.join(root, file)); fs.rmdirSync(root); });
   const org = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', sites = { basel: true, brugg: true, olten: true };
   const config = { schemaVersion: 1, organizations: { basel: org, brugg: org, olten: org }, organizationRole: 'admin', removeOtherOrganizationRoles: true, unselectedSites: 'leave_unchanged', protectedOwners: [{ email: 'owner@example.org', name: 'Owner', sites }], lecturers: [{ email: 'teacher@example.org', name: 'Teacher Name', sites }] };
   fs.writeFileSync(path.join(root, 'admin-config.json'), JSON.stringify(config));
@@ -62,6 +63,7 @@ function fixture(t, options = {}) {
     throw Error('Unexpected Runtime ' + endpoint);
   } };
   const context = { organizationApi, runtimeApi, runtimeBase: 'https://runtime.example.org', environmentId: 'env', expectedOrganization: org, runtimeClientId: 'client', runtimeRole: 'studierende', protectedEmails: ['teacher@example.org', 'owner@example.org'], revision: 'ctx1' };
+  if (options.database) { const store = dataStore.initializeStore(root); store.pruneLegacy(); }
   const cleanup = new Cleanup({ root, contextForSite: () => context, wait: async () => {} });
   let clock = Date.now();
   const manager = new Classroom({ root, contextForSite: () => context, cleanup, now: () => clock, parse: async () => ({ sheets: [] }), analyze: async () => ({ students: people, warnings: [], model: 'mock', transmittedRows: 3 }) });
@@ -74,6 +76,26 @@ test('import and local group edits do not write to Camunda and use lecturer/day/
   const p = await f.manager.movePreview(c.id, 'one@example.org', c.groups[1].id); assert.equal(p.localOnly, true); await f.manager.move(p.previewId, true);
   assert.equal(f.manager.get(c.id).groups[1].students.length, 2); assert.equal(f.writes.length, 0);
   f.manager.addGroup(c.id, 'Gruppe 4'); assert.equal(f.manager.get(c.id).groups.length, 4);
+});
+
+test('database-only class provisioning persists verified assignments and receipts without recreating JSON files', async t => {
+  const f = fixture(t, { database: true }), c = await f.draft();
+  const result = await f.provision(c); assert.equal(result.status, 'completed', result.error); assert.equal(result.classroom.status, 'ready');
+  const store = dataStore.getStore(f.root); assert.equal(store.db.prepare('SELECT count(*) AS n FROM class_students').get().n, f.people.length);
+  assert.equal(store.db.prepare("SELECT count(*) AS n FROM receipts WHERE kind='class' AND status='completed'").get().n, 1);
+  assert.equal(fs.readdirSync(f.root).filter(file => file.endsWith('.json')).length, 0);
+  const count = f.writes.length, again = await f.provision(f.manager.get(c.id)); assert.equal(again.status, 'completed', again.error); assert.equal(f.writes.length, count);
+});
+
+test('database-only pending assignments continue after reopening the database without resending organization invitations', async t => {
+  const f = fixture(t, { database: true, missingStudent: 'one@example.org' }), result = await f.provision(await f.draft());
+  assert.equal(result.classroom.status, 'pending');
+  dataStore.getStore(f.root).close(); dataStore.initializeStore(f.root);
+  f.state.members.push({ email: 'one@example.org', roles: ['modeler'] }); f.advance();
+  await f.manager.access.tick();
+  assert.equal(f.manager.get(result.classroom.id).status, 'ready');
+  assert.equal(f.writes.filter(w => w.endpoint === '/members/one%40example.org').length, 1);
+  assert.equal(fs.readdirSync(f.root).filter(file => file.endsWith('.json')).length, 0);
 });
 
 test('a completely cleaned class can be imported anew without reusing old invitation receipts or deleting its history', async t => {

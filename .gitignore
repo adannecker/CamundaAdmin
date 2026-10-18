@@ -4,6 +4,7 @@ credentials_*.txt.bak
 *_credentials.txt
 *.local.json
 *.local.sqlite*
+camundaadmin.sqlite*
 *.local.jsonl
 cluster-start-*.local.json.*
 access.txt

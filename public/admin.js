@@ -47,6 +47,7 @@ if(typeof module==='object'&&module.exports){module.exports={compareAdminSite};}
   el('admin-read').disabled=busy||!config;
   el('admin-read').setAttribute('aria-busy',String(busy));
   el('admin-save').disabled=busy||!config||!dirty;
+  el('admin-export').disabled=busy||!config||dirty;
   el('admin-reconcile').disabled=busy||!config;
   el('admin-reconcile-apply').disabled=busy||!activePlan||!activePlan.changes.length;
   el('admin-reconcile-close').disabled=busy;
@@ -94,7 +95,7 @@ if(typeof module==='object'&&module.exports){module.exports={compareAdminSite};}
  }
  async function load(){
   if(busy)return;
-  if(dirty&&!window.confirm('Ungespeicherte Änderungen verwerfen und die JSON neu laden?'))return;
+  if(dirty&&!window.confirm('Ungespeicherte Änderungen verwerfen und die Konfiguration neu laden?'))return;
   busy=true;invalidatePlan();controls();status('Konfiguration und aktuelle Rollen werden geladen …');
   try{const result=await getJson('/api/admin/config');config=result.config;revision=result.revision;dirty=false;inventory=null;document.dispatchEvent(new Event('admin-config-saved'));el('admin-remove-other').checked=config.removeOtherOrganizationRoles;renderTable();await readInventory('Konfiguration geladen.');}
   catch(error){status(error.message);}
@@ -110,20 +111,21 @@ if(typeof module==='object'&&module.exports){module.exports={compareAdminSite};}
  el('admin-table').addEventListener('click',event=>{const button=event.target.closest('[data-remove]');if(!button||busy)return;const person=config.lecturers[Number(button.dataset.remove)];pendingLocalRemove=person.email;el('admin-local-remove-person').textContent=(person.name||person.email)+' · '+person.email;el('admin-local-remove-dialog').showModal();});
  el('admin-local-remove-close').addEventListener('click',()=>{pendingLocalRemove=null;el('admin-local-remove-dialog').close();});
  el('admin-local-remove-dialog').addEventListener('cancel',()=>{pendingLocalRemove=null;});
- el('admin-local-remove-apply').addEventListener('click',()=>{if(busy||!pendingLocalRemove)return;config.lecturers=config.lecturers.filter(p=>p.email!==pendingLocalRemove);pendingLocalRemove=null;el('admin-local-remove-dialog').close();renderTable();markDirty();status('Aus lokalem Entwurf entfernt. Zum Übernehmen JSON speichern.');});
+ el('admin-local-remove-apply').addEventListener('click',()=>{if(busy||!pendingLocalRemove)return;config.lecturers=config.lecturers.filter(p=>p.email!==pendingLocalRemove);pendingLocalRemove=null;el('admin-local-remove-dialog').close();renderTable();markDirty();status('Aus lokalem Entwurf entfernt. Zum Übernehmen Konfiguration speichern.');});
  el('admin-add').addEventListener('submit',event=>{
   event.preventDefault();if(!config||busy)return;
   const email=el('admin-email').value.trim().toLowerCase(),name=el('admin-name').value.trim();
   if([...config.protectedOwners,...config.lecturers].some(p=>p.email===email)){status('Diese E-Mail ist bereits enthalten oder als Owner geschützt.');return;}
   if(config.lecturers.length>=50){status('Maximal 50 Dozenten möglich.');return;}
-  config.lecturers.push({email,name,sites:{basel:false,brugg:false,olten:false}});el('admin-email').value='';el('admin-name').value='';renderTable();markDirty();status('Dozent ergänzt. Standorte auswählen und JSON speichern.');
+  config.lecturers.push({email,name,sites:{basel:false,brugg:false,olten:false}});el('admin-email').value='';el('admin-name').value='';renderTable();markDirty();status('Dozent ergänzt. Standorte auswählen und Konfiguration speichern.');
  });
  async function saveDraft(){
   const result=await getJson('/api/admin/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({config,revision})});config=result.config;revision=result.revision;dirty=false;document.dispatchEvent(new Event('admin-config-saved'));invalidatePlan();renderTable();
  }
+ el('admin-export').addEventListener('click',()=>{if(!config||dirty||busy)return;const url=URL.createObjectURL(new Blob([JSON.stringify(config,null,2)+'\n'],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='admin-config.json';link.click();URL.revokeObjectURL(url);});
  el('admin-save').addEventListener('click',async()=>{
-  if(busy||!dirty)return;busy=true;controls();status('Lokale JSON-Konfiguration wird gespeichert …');
-  try{await saveDraft();await readInventory('admin-config.json gespeichert.');}
+  if(busy||!dirty)return;busy=true;controls();status('Konfiguration wird gespeichert …');
+  try{await saveDraft();await readInventory('Konfiguration gespeichert.');}
   catch(error){status(error.message);}
   finally{busy=false;controls();}
  });

@@ -1,3 +1,4 @@
+const dataStore = require('./lib/state-store');
 const fs = require('node:fs');
 const path = require('node:path');
 const { CamundaApi, readCredentials } = require('./lib/camunda-api');
@@ -9,7 +10,8 @@ async function main() {
   if (!filename) throw new Error('Lokale Konfigurationsdatei fehlt.');
   const absolute = path.resolve(filename);
   const directory = path.dirname(absolute);
-  const config = JSON.parse(fs.readFileSync(absolute, 'utf8').replace(/^\uFEFF/, ''));
+  if (fs.existsSync(path.join(path.dirname(absolute), 'camundaadmin.sqlite'))) dataStore.initializeStore(path.dirname(absolute));
+  const config = dataStore.readJson(absolute);
   const action = args[0];
   const apply = ['--groups-only', '--support-access'].includes(action);
   if (args.length && !(apply && args.length === 3 && args[1] === '--confirm' && args[2] === config.expectedOrganization) && !(args.length === 1 && action === '--verify')) throw new Error('Erlaubt: --verify oder --groups-only/--support-access mit --confirm und exakter Organisations-ID.');

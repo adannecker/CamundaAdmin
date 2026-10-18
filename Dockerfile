@@ -3,7 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-cert
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY server.js ./
+COPY server.js migrate-data.js ./
 COPY lib ./lib
 COPY public ./public
 USER 1002:1002

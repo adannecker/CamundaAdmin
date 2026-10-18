@@ -2,6 +2,7 @@
 !package.json
 !package-lock.json
 !server.js
+!migrate-data.js
 !lib/
 !lib/**
 !public/

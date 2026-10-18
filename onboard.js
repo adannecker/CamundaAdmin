@@ -1,3 +1,4 @@
+const dataStore = require('./lib/state-store');
 const fs = require('node:fs');
 const path = require('node:path');
 const { CamundaApi, readCredentials } = require('./lib/camunda-api');
@@ -16,7 +17,8 @@ async function main() {
     else if (!modes.includes(args[index])) throw new Error('Unbekanntes Argument.');
   }
   const absolute = path.resolve(configFile);
-  const config = JSON.parse(fs.readFileSync(absolute, 'utf8').replace(/^\uFEFF/, ''));
+  if (fs.existsSync(path.join(path.dirname(absolute), 'camundaadmin.sqlite'))) dataStore.initializeStore(path.dirname(absolute));
+  const config = dataStore.readJson(absolute);
   const directory = path.dirname(absolute);
   const credentials = readCredentials(path.resolve(directory, config.credentialsFile));
   const api = new CamundaApi(credentials);

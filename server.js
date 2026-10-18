@@ -6,6 +6,7 @@ const { createWebAuth, settings: authSettings } = require('./lib/web-auth');
 const { ActivityLog } = require('./lib/activity-log');
 const { OpenAssignments } = require('./lib/open-assignments');
 const { reconcileClassCleanup } = require('./lib/class-cleanup-state');
+const dataStore = require('./lib/state-store');
 const { CamundaApi, readCredentials: readApiCredentials } = require('./lib/camunda-api');
 const { Cleanup } = require('./lib/cleanup');
 const { LecturerResources } = require('./lib/lecturer-resources');
@@ -22,6 +23,9 @@ const PORT = Number(process.env.PORT || 3300);
 authSettings(process.env);
 const APP_ROOT = __dirname;
 const ROOT = process.env.CAMUNDA_DATA_DIR || __dirname;
+let storage;
+try { storage = dataStore.initializeStore(ROOT); }
+catch { console.error('Datenbankmigration fehlgeschlagen. Quelldaten bleiben erhalten; Dienststart abgebrochen.'); process.exit(1); }
 let webAuth;
 const DEFINITION_STATE_FILE = path.join(ROOT, 'definition-cleanup-state.json');
 const ADMIN_CONFIG_FILE = path.join(ROOT, 'admin-config.json');
@@ -39,7 +43,7 @@ const clusterStart = new ClusterStart({ root: ROOT, apiForSite: adminApiForSite 
 function cleanupContext(site) {
   const setup = loadSetup(ROOT, site), admin = loadAdminConfig(ADMIN_CONFIG_FILE);
   const filename = path.join(ROOT, `onboarding-${site}.local.json`);
-  const raw = fs.existsSync(filename) ? fs.readFileSync(filename, 'utf8').replace(/^\uFEFF/, '') : '{}';
+  const raw = dataStore.exists(filename) ? dataStore.readText(filename).replace(/^\uFEFF/, '') : '{}';
   const onboarding = JSON.parse(raw);
   const credentials = readApiCredentials(path.join(ROOT, setup.runtimeCredentialsFile));
   if (credentials.CAMUNDA_CLUSTER_ID !== setup.clusterId || credentials.CAMUNDA_REST_ADDRESS !== setup.runtimeBase) throw new Error('Runtime-Datei und Standort passen nicht zusammen.');
@@ -47,7 +51,7 @@ function cleanupContext(site) {
     runtimeRole: onboarding.runtimeRole || 'studierende', runtimeClientId: credentials.CAMUNDA_CLIENT_ID, expectedOrganization: setup.organizationId,
     protectedEmails: [...admin.config.protectedOwners, ...admin.config.lecturers].map(p => p.email),
     managedWorkspaceNames: onboarding.expectedOrganization === setup.organizationId && onboarding.workspaceName ? [onboarding.workspaceName] : [],
-    revision: crypto.createHash('sha256').update(admin.revision + raw + fs.readFileSync(path.join(ROOT, 'site-setup.json')) + fs.readFileSync(path.join(ROOT, setup.runtimeCredentialsFile))).digest('hex') };
+    revision: crypto.createHash('sha256').update(admin.revision + raw + dataStore.readText(path.join(ROOT, 'site-setup.json')) + fs.readFileSync(path.join(ROOT, setup.runtimeCredentialsFile))).digest('hex') };
 }
 const cleanup = new Cleanup({ root: ROOT, contextForSite: cleanupContext });
 const lecturerResources = new LecturerResources({ root: ROOT, contextForSite: cleanupContext, cleanup });
@@ -96,7 +100,7 @@ const definitionCleanupJobs = new Map();
 const projectDeletionJobs = new Map();
 const deletedDefinitionKeys = (() => {
   try {
-    const stored = JSON.parse(fs.readFileSync(DEFINITION_STATE_FILE, 'utf8'));
+    const stored = dataStore.readJson(DEFINITION_STATE_FILE);
     return new Map(Object.entries(stored).map(([clusterId, keys]) => [clusterId, new Set(Array.isArray(keys) ? keys.map(String) : [])]));
   } catch {
     return new Map();
@@ -107,7 +111,7 @@ function rememberDeletedDefinitions(clusterId, keys) {
   const stored = deletedDefinitionKeys.get(clusterId) || new Set();
   for (const key of keys) stored.add(String(key));
   deletedDefinitionKeys.set(clusterId, stored);
-  fs.writeFileSync(DEFINITION_STATE_FILE, JSON.stringify(Object.fromEntries(
+  dataStore.writeText(DEFINITION_STATE_FILE, JSON.stringify(Object.fromEntries(
     [...deletedDefinitionKeys].map(([id, values]) => [id, [...values]]),
   ), null, 2));
 }
@@ -940,18 +944,18 @@ async function dispatchRequest(request, response, url) {
       return sendJson(response, 200, result);
     } catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
   }
-  // This separate write only updates the local JSON file.
+  // This separate write only updates the application database.
   if (request.method === 'PUT' && url.pathname === '/api/admin/config') {
     if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Speichern ist nur lokal mit JSON und passender Herkunft erlaubt.' });
     try {
       const input = await readJsonBody(request);
-      return sendJson(response, 200, await activity.operation('config.save', {}, () => ({ ...saveAdminConfig(ADMIN_CONFIG_FILE, input.config, input.revision), file: 'admin-config.json', appliedToCamunda: false })));
+      return sendJson(response, 200, await activity.operation('config.save', {}, () => ({ ...saveAdminConfig(ADMIN_CONFIG_FILE, input.config, input.revision), storage: 'sqlite', appliedToCamunda: false })));
     } catch (error) { return sendJson(response, error.message.includes('zwischenzeitlich') ? 409 : 400, { error: error.message }); }
   }
   // All other writes, including legacy cleanup and permanent workspace deletion, remain disabled.
   if (!['GET', 'HEAD'].includes(request.method)) return sendJson(response, 403, { error: 'Schreibaktionen sind derzeit deaktiviert.' });
   if (request.method === 'GET' && url.pathname === '/api/admin/config') {
-    try { return sendJson(response, 200, { ...loadAdminConfig(ADMIN_CONFIG_FILE), file: 'admin-config.json', appliedToCamunda: false }); }
+    try { return sendJson(response, 200, { ...loadAdminConfig(ADMIN_CONFIG_FILE), storage: 'sqlite', appliedToCamunda: false }); }
     catch (error) { return sendJson(response, 500, { error: error.message }); }
   }
   if (request.method === 'GET' && url.pathname === '/api/admin/inventory') {

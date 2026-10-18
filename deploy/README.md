@@ -25,13 +25,28 @@ solche Freigabe.
 
 ## Daten und Secrets
 
-`data/` enthält die sechs Camunda-Credential-Dateien, `admin-config.json`,
-`site-setup.json`, `classes.local.json`, `lecturer-resources.local.json` sowie
-gegebenenfalls `onboarding-<standort>.local.json`. Alle weiteren Laufzustände
-werden ebenfalls dort gespeichert. `secrets/openai.env` ist die übertragene `.env`;
-sie wird zusätzlich schreibgeschützt als `/app/data/.env` eingebunden.
-`secrets/auth.env` enthält den OIDC-Client-Secret und die feste Owner-Freigabe.
-Diese Dateien gehören niemals ins Git. Verzeichnisse 0700, private Dateien 0600.
+Die maßgebliche Ablage ist `data/camundaadmin.sqlite` (SQLite mit WAL).
+Dozenten, Standortauswahl, Organisationen, Klassen, Gruppen, Studierende und
+private Ressourcen besitzen strukturierte Tabellen. Vollständige Zustände,
+Prüfstände und Ausführungsbelege werden zusätzlich als transaktionale Dokumente
+aufbewahrt; deren frühere Dateinamen sind nur Datensatzschlüssel. Dokumente und
+zugehörige Tabellen werden gemeinsam übernommen oder vollständig zurückgerollt.
+Auch das Ereignisprotokoll liegt in derselben DB.
+
+Die sechs `credentials_*.txt` bleiben getrennte private Secrets in `data/`.
+`secrets/openai.env` ist zusätzlich schreibgeschützt als `/app/data/.env`
+eingebunden. `secrets/auth.env` enthält den OIDC-Client-Secret und die feste
+Owner-Freigabe. Verzeichnisse 0700, private Dateien 0600; kein Git für diese Daten.
+Kurzlebige Sperrdateien koordinieren weiterhin die laufenden Aktionen.
+
+Die erste Initialisierung übernimmt gültige `*.local.json`,
+`admin-config.json`, `site-setup.json`, gegebenenfalls den Definitionenstatus
+und die bisherige `operations.local.sqlite` in einer Transaktion. Originaltext
+und Prüfsummen der Konfiguration bleiben erhalten. Spätere Starts verwenden
+ausschließlich die DB; zurückkopierte JSON-Dateien überschreiben sie nicht.
+Für eine neue Installation zunächst die Konfigurationsvorlagen und Secrets
+bereitstellen oder eine konsistente DB-Sicherung wiederherstellen.
+Die Dozentenkonfiguration lässt sich im Adminbereich als JSON exportieren.
 
 Die automatischen Zugriffszuordnungen laufen nur in einer Instanz. Einen alten
 lokalen Dienst vor der Übernahme stoppen. Für reine lokale Entwicklung ist
@@ -69,8 +84,8 @@ Bootstrap-Datei muss nach dem Lauf entfernt werden. Keine Secrets in Logs ausgeb
 
 ## Ereignisse und offene Zuweisungen
 
-Das Ereignisprotokoll liegt dauerhaft in `data/operations.local.sqlite` (SQLite
-mit WAL). Es enthält Auslöser, Zeitpunkt, Standort, Dozent, Klasse, Laufkennung,
+Das Ereignisprotokoll liegt dauerhaft in `data/camundaadmin.sqlite`.
+Es enthält Auslöser, Zeitpunkt, Standort, Dozent, Klasse, Laufkennung,
 Aktion und Ergebnis. Request-/Response-Bodies, API-Schlüssel, Tokens und
 Excel-Zellen werden nicht protokolliert. Beim ersten Start werden vorhandene
 Ausführungsbelege einmalig als Historie übernommen; deren Zeitpunkt ist der
@@ -80,7 +95,7 @@ Externe Änderungen direkt in Camunda gehören nicht zu diesem Dienstprotokoll.
 `Offene Zuweisungen` liest auf Knopfdruck Organisationseinladungen,
 Workspace-Mitgliedschaften, Runtime-Gruppen und die vorgesehenen Gruppenrechte.
 Es erfolgen dabei ausschließlich GETs und Such-POSTs. Der letzte Stand bleibt
-in `data/assignment-status.local.json` erhalten; eine Änderung an der Klasse
+in der Datenbank erhalten; eine Änderung an der Klasse
 verwirft dessen Gültigkeit. Zeitpunkt und unbekannte/fehlende Antworten bleiben
 sichtbar. Die Funktion verschickt keine Einladungen und aktiviert keine
 Automatik. `Meine Klassen` filtert nach dem angemeldeten Owner-Konto.
@@ -91,11 +106,31 @@ wird deaktiviert; vollständig gelöschte Klassen heißen `cleaned` und werden i
 der offenen Liste standardmäßig ausgeblendet. Sie lassen sich über „Bereinigte
 Klassen anzeigen“ nachvollziehen. Ein neuer Excel-Import ersetzt eine vollständig
 bereinigte Klasse durch einen frischen Entwurf ohne alte Einladungsbelege; der
-vorherige Stand bleibt in `classes.local.json` unter `archivedClasses` erhalten.
+vorherige Stand bleibt als archivierter Klassenlauf in der Datenbank erhalten.
 Unbestätigte Löschversuche und Belege vor dem neuen Klassenlauf lösen diese
 Umstellung nicht aus. Live-Abweichungen von einem früheren Einrichtungsabschluss
 werden als Nachprüfung angezeigt und nicht automatisch repariert.
 
 Für konsistente Backups die Anwendung stoppen und die gesamte `data/`-Ablage
 einschließlich eventuell vorhandener SQLite-WAL-Dateien sichern. Die Datenbank
-und die Statusdatei sind ebenso privat wie die Klassenlisten und nicht im Git.
+ist ebenso privat wie die Klassenlisten und nicht im Git.
+
+## Geprüfte Migration und Bereinigung
+
+Vor dem Wechsel die alte Instanz stoppen und `data/`, `secrets/` und Compose
+privat sichern. Das neue Image bauen und die Migration zunächst auf einer
+isolierten Kopie testen. Danach offline im Daten-Volume ausführen:
+
+```sh
+docker compose run --rm -T app node migrate-data.js --root /app/data
+docker compose run --rm -T app node migrate-data.js --root /app/data --prune --backup-confirmed
+docker compose up -d
+```
+
+Die Prüfung vergleicht Quelldateien anhand ihrer Hashes, prüft Integrität und
+Fremdschlüssel und vergleicht alle alten Ereigniszeilen mit der neuen DB.
+Die Bereinigung entfernt ausschließlich nachweislich migrierte Dateien und
+das alte Ereignis-DB-Dateiset im eigenen Datenordner. Veränderte oder nicht
+migrierte Quelldateien stoppen sie. Secrets und Backups werden nicht entfernt.
+Bei einer Rücknahme alten Code und den vollständigen vorherigen Datenstand
+zusammen wiederherstellen; niemals zwei unabhängige Worker starten.
