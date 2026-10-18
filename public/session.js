@@ -16,15 +16,20 @@
     const response = await originalFetch(target, { ...init, headers });
     if (local && response.status === 401) {
       const notice = document.getElementById('session-notice');
-      if (notice) { notice.hidden = false; notice.textContent = 'Sitzung abgelaufen. Bitte erneut mit AAI anmelden.'; }
+      if (notice) {
+        notice.hidden = false;
+        notice.replaceChildren(document.createTextNode('Sitzung abgelaufen. Daten können nicht geladen werden. '));
+        const login = document.createElement('a');
+        login.href = base + '/auth/login'; login.textContent = 'Erneut mit AAI anmelden';
+        notice.append(login);
+      }
     }
     return response;
   };
   const area = document.createElement('div');
-  area.id = 'session-notice'; area.className = 'read-only'; area.hidden = true;
+  area.id = 'session-notice'; area.className = 'read-only'; area.hidden = true; area.setAttribute('role', 'alert');
   document.querySelector('aside')?.append(area);
   if (csrf) {
-    const link = document.createElement('a'); link.href = base + '/auth/login'; link.textContent = 'Erneut anmelden'; area.append(link);
     const box = document.createElement('div'); box.className = 'read-only';
     const name = document.createElement('div'); name.textContent = 'AAI · Owner';
     const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Abmelden';

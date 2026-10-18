@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 async function settle() { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); }
-function fixture() {
+function fixture({ metadataError } = {}) {
   const elements = new Map(), calls = [], tasks = [];
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -25,7 +25,7 @@ function fixture() {
   const document = { getElementById: element, querySelector: () => element('sidebar'), querySelectorAll: () => [...elements.values()] };
   const fetch = async (url, options) => {
     calls.push({ url, options });
-    if (url === '/api/classes') return { ok: true, json: async () => metadata };
+    if (url === '/api/classes') return { ok: !metadataError, json: async () => metadataError ? { error: metadataError } : metadata };
     if (url.endsWith('/preview')) return { ok: true, json: () => preview.promise };
     if (url.endsWith('/apply')) return { ok: true, json: () => apply.promise };
     assert.fail('Unexpected request ' + url);
@@ -38,6 +38,14 @@ function fixture() {
     await settle();
   } };
 }
+
+test('an expired session does not present unloaded lecturers as an empty class', async () => {
+  const f = fixture({ metadataError: 'Bitte mit AAI anmelden.' });
+  await f.element('class-refresh').listeners.click();
+  assert.equal(f.element('class-status').textContent, 'Bitte mit AAI anmelden.');
+  assert.match(f.element('class-board').innerHTML, /Klassen und Dozenten noch nicht geladen/);
+  assert.doesNotMatch(f.element('class-board').innerHTML, /Noch keine Klasse für diese Auswahl/);
+});
 
 test('creation preview holds the overlay until the JSON body is ready and requires acknowledgement before applying once', async () => {
   const f = fixture(); await f.open();
