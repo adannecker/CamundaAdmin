@@ -1,11 +1,22 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const crypto = require('node:crypto');
+const { CamundaApi, readCredentials: readApiCredentials } = require('./lib/camunda-api');
+const { Cleanup } = require('./lib/cleanup');
+const { LecturerResources } = require('./lib/lecturer-resources');
+const { Classroom } = require('./lib/classroom');
+const { ClusterStart } = require('./lib/cluster-start');
+const { connectorEnvSecrets } = require('./lib/openai');
+const { loadAdminConfig, saveAdminConfig, readAdminInventory, adminRolePreview, allowLocalConfigWrite } = require('./lib/admin-config');
+const { AdminReconciler } = require('./lib/admin-reconcile');
+const { SiteSetup, loadSetup } = require('./lib/site-setup');
 
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 3300);
 const ROOT = __dirname;
 const DEFINITION_STATE_FILE = path.join(ROOT, 'definition-cleanup-state.json');
+const ADMIN_CONFIG_FILE = path.join(ROOT, 'admin-config.json');
 const RUNTIME_CLEANUP_ENABLED = false;
 
 const clusters = {
@@ -13,6 +24,30 @@ const clusters = {
   brugg: { name: 'Brugg', credentials: 'credentials_brugg.txt' },
   olten: { name: 'Olten', credentials: 'credentials_olten.txt' },
 };
+const adminApiForSite = site => new CamundaApi(readApiCredentials(path.join(ROOT, clusters[site].credentials)), { freshReads: true });
+const adminReconciler = new AdminReconciler({ configFile: ADMIN_CONFIG_FILE, apiForSite: adminApiForSite });
+const siteSetup = new SiteSetup({ root: ROOT, organizationApiForSite: adminApiForSite });
+const clusterStart = new ClusterStart({ root: ROOT, apiForSite: adminApiForSite });
+function cleanupContext(site) {
+  const setup = loadSetup(ROOT, site), admin = loadAdminConfig(ADMIN_CONFIG_FILE);
+  const filename = path.join(ROOT, `onboarding-${site}.local.json`);
+  const raw = fs.existsSync(filename) ? fs.readFileSync(filename, 'utf8').replace(/^\uFEFF/, '') : '{}';
+  const onboarding = JSON.parse(raw);
+  const credentials = readApiCredentials(path.join(ROOT, setup.runtimeCredentialsFile));
+  if (credentials.CAMUNDA_CLUSTER_ID !== setup.clusterId || credentials.CAMUNDA_REST_ADDRESS !== setup.runtimeBase) throw new Error('Runtime-Datei und Standort passen nicht zusammen.');
+  return { organizationApi: adminApiForSite(site), runtimeApi: new CamundaApi(credentials, { freshReads: true }), runtimeBase: setup.runtimeBase, environmentId: setup.environmentId,
+    runtimeRole: onboarding.runtimeRole || 'studierende', runtimeClientId: credentials.CAMUNDA_CLIENT_ID, expectedOrganization: setup.organizationId,
+    protectedEmails: [...admin.config.protectedOwners, ...admin.config.lecturers].map(p => p.email),
+    managedWorkspaceNames: onboarding.expectedOrganization === setup.organizationId && onboarding.workspaceName ? [onboarding.workspaceName] : [],
+    revision: crypto.createHash('sha256').update(admin.revision + raw + fs.readFileSync(path.join(ROOT, 'site-setup.json')) + fs.readFileSync(path.join(ROOT, setup.runtimeCredentialsFile))).digest('hex') };
+}
+const cleanup = new Cleanup({ root: ROOT, contextForSite: cleanupContext });
+const lecturerResources = new LecturerResources({ root: ROOT, contextForSite: cleanupContext, cleanup });
+const classroom = new Classroom({ root: ROOT, contextForSite: cleanupContext, cleanup });
+// Internal service worker; runs only while this local server is running.
+const completeClassAccess = () => classroom.access.tick().catch(() => console.error('Automatische Klassen-Zuweisung konnte nicht geprüft werden.'));
+setInterval(completeClassAccess, 60000).unref();
+setTimeout(completeClassAccess, 5000).unref();
 
 const resources = {
   members: { label: 'Member', kind: 'console', method: 'GET', path: 'members' },
@@ -116,9 +151,7 @@ function readCredentials(filename) {
 
 function connectorSecretsFromEnv() {
   try {
-    return Object.entries(readCredentials('.env'))
-      .filter(([name]) => /^[A-Z][A-Z0-9_]*$/.test(name))
-      .map(([name, secretValue]) => ({ name, secretValue }));
+    return connectorEnvSecrets(readCredentials('.env'));
   } catch {
     return [];
   }
@@ -447,12 +480,12 @@ async function runDefinitionCleanup(clusterId, snapshot, job) {
   job.finishedAt = new Date().toISOString();
 }
 
-function readJsonBody(request) {
+function readJsonBody(request, limit = 10_000) {
   return new Promise((resolve, reject) => {
     let body = '';
     request.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 10_000) reject(new Error('Anfrage ist zu groß.'));
+      if (body.length > limit) reject(new Error('Anfrage ist zu groß.'));
     });
     request.on('end', () => {
       try { resolve(body ? JSON.parse(body) : {}); } catch { reject(new Error('Ungültige JSON-Anfrage.')); }
@@ -804,8 +837,88 @@ function serveStatic(response, filename, type) {
 
 http.createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
-  // Cleanup and administration writes remain disabled until explicitly enabled in code.
+  const clusterStartRoute = url.pathname.match(/^\/api\/(basel|brugg|olten)\/clusters\/start$/);
+  if (request.method === 'POST' && clusterStartRoute) {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Clusterstart nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try { const input = await readJsonBody(request); return sendJson(response, 200, await clusterStart.start(clusterStartRoute[1], input.clusterId)); }
+    catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/classes') {
+    try { return sendJson(response, 200, classroom.metadata()); } catch (error) { return sendJson(response, 502, { error: error.message }); }
+  }
+  const classRoutes = { '/api/classes/access/configure': input => classroom.access.configure(input.classId, input.enabled), '/api/classes/import/preview': input => classroom.importPreview(input), '/api/classes/import/save': input => classroom.saveImport(input.previewId, input.acknowledged), '/api/classes/provision/preview': input => classroom.provisionPreview(input.classId), '/api/classes/provision/apply': input => classroom.provision(input.previewId, input.acknowledged), '/api/classes/move/preview': input => classroom.movePreview(input.classId, input.email, input.targetGroupId), '/api/classes/move/apply': input => classroom.move(input.previewId, input.acknowledged), '/api/classes/groups': input => classroom.addGroup(input.classId, input.name) };
+  if (request.method === 'POST' && classRoutes[url.pathname]) {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Klassenverwaltung nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try { const input = await readJsonBody(request, url.pathname === '/api/classes/import/preview' ? 5700000 : 10000); return sendJson(response, 200, await classRoutes[url.pathname](input)); }
+    catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/admin/lecturer-resources') {
+    try { return sendJson(response, 200, await lecturerResources.all()); }
+    catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
+  }
+  if (request.method === 'POST' && ['/api/admin/lecturer-resources/preview', '/api/admin/lecturer-resources/apply'].includes(url.pathname)) {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Dozentenverwaltung nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try { const input = await readJsonBody(request); return sendJson(response, 200, url.pathname.endsWith('/preview') ? await lecturerResources.preview(input.site, input.email, input.action) : await lecturerResources.apply(input.previewId, input.acknowledged)); }
+    catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/cleanup/progress') return sendJson(response, 200, { runs: Object.keys(clusters).map(site => ({ site, ...cleanup.getProgress(site) })).filter(run => run.phase === 'running') });
+  const selectedCleanup = url.pathname.match(/^\/api\/(basel|brugg|olten)\/cleanup\/(preview|apply)$/);
+  if (request.method === 'POST' && selectedCleanup) {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Cleanup ist nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try {
+      const input = await readJsonBody(request);
+      const result = selectedCleanup[2] === 'preview' ? await cleanup.preview(selectedCleanup[1], input.analysisId, input.selection) : await cleanup.apply(selectedCleanup[1], input.previewId, input.acknowledged);
+      return sendJson(response, 200, result);
+    } catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/admin/setup') {
+    try { return sendJson(response, 200, { sites: await siteSetup.all() }); }
+    catch (error) { return sendJson(response, 502, { error: error.message }); }
+  }
+  const setupAction = url.pathname.match(/^\/api\/admin\/setup\/(basel|brugg|olten)\/apply$/);
+  if (request.method === 'POST' && setupAction) {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Standorteinrichtung ist nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try {
+      const input = await readJsonBody(request);
+      return sendJson(response, 200, await siteSetup.apply(setupAction[1], input.action));
+    } catch (error) { return sendJson(response, error.status || 409, { error: error.message + ' Einrichtung gestoppt. Bereits ausgeführte Schritte bleiben erhalten; Bestand vor einem weiteren Versuch neu prüfen.' }); }
+  }
+  // Preview is read-only; applying requires the one-use preview from this process.
+  if (request.method === 'POST' && ['/api/admin/reconcile/preview', '/api/admin/reconcile/apply'].includes(url.pathname)) {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Abgleich ist nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try {
+      const input = await readJsonBody(request);
+      const result = url.pathname.endsWith('/preview') ? await adminReconciler.preview(input.revision) : await adminReconciler.apply(input.previewId);
+      return sendJson(response, 200, result);
+    } catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
+  }
+  // This separate write only updates the local JSON file.
+  if (request.method === 'PUT' && url.pathname === '/api/admin/config') {
+    if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Speichern ist nur lokal mit JSON und passender Herkunft erlaubt.' });
+    try {
+      const input = await readJsonBody(request);
+      return sendJson(response, 200, { ...saveAdminConfig(ADMIN_CONFIG_FILE, input.config, input.revision), file: 'admin-config.json', appliedToCamunda: false });
+    } catch (error) { return sendJson(response, error.message.includes('zwischenzeitlich') ? 409 : 400, { error: error.message }); }
+  }
+  // All other writes, including legacy cleanup and permanent workspace deletion, remain disabled.
   if (!['GET', 'HEAD'].includes(request.method)) return sendJson(response, 403, { error: 'Schreibaktionen sind derzeit deaktiviert.' });
+  if (request.method === 'GET' && url.pathname === '/api/admin/config') {
+    try { return sendJson(response, 200, { ...loadAdminConfig(ADMIN_CONFIG_FILE), file: 'admin-config.json', appliedToCamunda: false }); }
+    catch (error) { return sendJson(response, 500, { error: error.message }); }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/admin/inventory') {
+    try {
+      const { config } = loadAdminConfig(ADMIN_CONFIG_FILE);
+      const inventory = await readAdminInventory(config, adminApiForSite);
+      return sendJson(response, 200, { inventory, preview: adminRolePreview(config, inventory), appliedToCamunda: false });
+    } catch (error) { return sendJson(response, 502, { error: error.message }); }
+  }
+  const analysisMatch = url.pathname.match(/^\/api\/(basel|brugg|olten)\/cleanup-analysis$/);
+  if (request.method === 'GET' && analysisMatch) {
+    try {
+      return sendJson(response, 200, await cleanup.analyze(analysisMatch[1]));
+    } catch (error) { return sendJson(response, 502, { error: error.message }); }
+  }
   const liveMatch = url.pathname.match(/^\/api\/(basel|brugg|olten)\/live$/);
   if (request.method === 'GET' && liveMatch) {
     const checkedAt = new Date().toISOString();
@@ -814,13 +927,20 @@ http.createServer(async (request, response) => {
       const list = await requestJson(connection.baseUrl + '/clusters', { headers: connection.headers, signal: AbortSignal.timeout(20000) }, 'Cluster');
       let runtime = { ok: false, configured: false, message: 'Keine vollständigen Runtime-Zugangsdaten konfiguriert.' };
       try {
-        const process = processConnection(liveMatch[1]);
+        const setup = loadSetup(ROOT, liveMatch[1]);
+        if (!fs.existsSync(path.join(ROOT, setup.runtimeCredentialsFile))) throw new Error('Runtime-Datei fehlt.');
         runtime.configured = true;
-        const token = await getClusterAccessToken(process.credentials, 'operate.camunda.io');
-        await requestJson(process.operateBaseUrl + '/v1/process-instances/search', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ size: 1 }), signal: AbortSignal.timeout(20000) }, 'Runtime');
-        runtime = { ok: true, configured: true, message: 'Operate lesend erreichbar.' };
+        const cluster = list.find(c => c.uuid === setup.clusterId);
+        if (cluster?.status?.ready !== 'Healthy') throw new Error('Runtime nicht geprüft: Cluster ' + (cluster?.status?.ready || 'unbekannt') + '.');
+        const api = new CamundaApi(readApiCredentials(path.join(ROOT, setup.runtimeCredentialsFile)), { freshReads: true });
+        await api.runtime(setup.runtimeBase, '/v2/authentication/me');
+        runtime = { ok: true, configured: true, message: 'Runtime-API authentifiziert erreichbar. Anwendungsspezifische Rechte unter Admin · Standorte prüfen.' };
       } catch (error) { if (runtime.configured) runtime.message = error.message; }
-      return sendJson(response, 200, { ok: true, checkedAt, runtime, clusters: list.map(item => ({ name: item.name, status: item.status || item.state || 'Unbekannt', version: item.generation?.name || '–', region: item.region?.name || '–' })) });
+      const configured = loadSetup(ROOT, liveMatch[1]);
+      const target = list.find(item => item.uuid === configured.clusterId);
+      let startInfo;
+      if (target) { try { startInfo = await clusterStart.status(liveMatch[1], target); } catch (error) { startInfo = { canStart: false, message: error.message }; } }
+      return sendJson(response, 200, { ok: true, checkedAt, runtime, clusters: list.map(item => ({ id: item.uuid, name: item.name, status: item.status?.ready || (typeof item.status === 'string' ? item.status : item.state) || 'Unbekannt', version: item.generation?.name || '–', region: item.region?.name || '–', ...(item.uuid === configured.clusterId ? { start: startInfo } : {}) })) });
     } catch (error) { return sendJson(response, 200, { ok: false, checkedAt, error: error.message }); }
   }
 
@@ -1056,6 +1176,12 @@ http.createServer(async (request, response) => {
   }
   if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return serveStatic(response, 'index.html', 'text/html; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/dashboard.js') return serveStatic(response, 'dashboard.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/admin.js') return serveStatic(response, 'admin.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/site-setup.js') return serveStatic(response, 'site-setup.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/cleanup.js') return serveStatic(response, 'cleanup.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/wait-overlay.js') return serveStatic(response, 'wait-overlay.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/lecturer-resources.js') return serveStatic(response, 'lecturer-resources.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/classroom.js') return serveStatic(response, 'classroom.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/app.js') return serveStatic(response, 'app.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/styles.css') return serveStatic(response, 'styles.css', 'text/css; charset=utf-8');
   response.writeHead(404);

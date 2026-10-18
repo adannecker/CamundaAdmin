@@ -1,0 +1,18 @@
+{
+  "credentialsFile": "credentials_basel.txt",
+  "runtimeCredentialsFile": "credentials_basel_runtime.txt",
+  "runtimeClientName": "FHNW-Camunda-Onboarding-Basel",
+  "expectedOrganization": "REPLACE_WITH_ORGANIZATION_UUID",
+  "workspaceName": "Klasse A - Gruppe 1",
+  "projects": ["Projektarbeit 1", "Projektarbeit 2"],
+  "adminEmail": "teacher@example.org",
+  "studentEmail": "student@example.org",
+  "environmentId": "REPLACE_WITH_ENVIRONMENT_UUID",
+  "runtimeBase": "https://REGION.api.camunda.io/REPLACE_WITH_CLUSTER_UUID",
+  "runtimeRole": "studierende",
+  "tenantGroups": [
+    {"tenantId": "klasse-a-g1", "groupId": "klasse-a-g1", "name": "Klasse A - Gruppe 1"},
+    {"tenantId": "klasse-a-g2", "groupId": "klasse-a-g2", "name": "Klasse A - Gruppe 2"}
+  ],
+  "studentGroupId": "klasse-a-g1"
+}

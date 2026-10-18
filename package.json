@@ -2,8 +2,11 @@
   "name": "camunda-cleanup",
   "private": true,
   "version": "0.1.0",
-  "description": "Lokale, lesende Übersicht für Camunda-Organisationen",
+  "description": "Lokale Camunda-Verwaltung mit Klassenimport, Gruppenrechten, Dozentenressourcen und Cleanup",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test",
+    "onboard": "node onboard.js",
+    "check:openai": "node check-openai.js"
   }
 }

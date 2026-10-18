@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "organizations": {
+    "basel": "70ecbc04-87ec-4122-8b3a-5716805cab80",
+    "brugg": "121011a0-3cd3-4761-9482-2cabebd558af",
+    "olten": "27e72492-a78e-45df-8bbd-2692077b11e0"
+  },
+  "organizationRole": "admin",
+  "removeOtherOrganizationRoles": true,
+  "unselectedSites": "leave_unchanged",
+  "protectedOwners": [
+    {
+      "email": "achim.dannecker@fhnw.ch",
+      "name": "Achim Dannecker",
+      "sites": {
+        "basel": true,
+        "brugg": true,
+        "olten": true
+      }
+    }
+  ],
+  "lecturers": [
+    {
+      "email": "christof.nitsche@fhnw.ch",
+      "name": "Christof Nitsche",
+      "sites": {
+        "basel": false,
+        "brugg": true,
+        "olten": false
+      }
+    },
+    {
+      "email": "claudio.giovanoli@fhnw.ch",
+      "name": "Claudio Giovanoli",
+      "sites": {
+        "basel": false,
+        "brugg": false,
+        "olten": true
+      }
+    },
+    {
+      "email": "denis.imhof@fhnw.ch",
+      "name": "Denis Imhof",
+      "sites": {
+        "basel": false,
+        "brugg": false,
+        "olten": true
+      }
+    },
+    {
+      "email": "lukas.meyer@fhnw.ch",
+      "name": "Lukas Meyer",
+      "sites": {
+        "basel": true,
+        "brugg": true,
+        "olten": true
+      }
+    },
+    {
+      "email": "simon.zeier@fhnw.ch",
+      "name": "Simon Zeier",
+      "sites": {
+        "basel": true,
+        "brugg": false,
+        "olten": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "sites": {
+    "basel": {
+      "clusterId": "527f8d1a-8888-45e6-ac58-dccbeaa6bb48",
+      "environmentId": "f0357f5d-a89e-4663-a916-405289878b7e",
+      "runtimeBase": "https://bru-2.api.camunda.io/527f8d1a-8888-45e6-ac58-dccbeaa6bb48",
+      "runtimeClientName": "FHNW-Camunda-Onboarding-Basel",
+      "runtimeCredentialsFile": "credentials_basel_runtime.txt"
+    },
+    "brugg": {
+      "clusterId": "a05207f4-e054-46cd-b4c2-74e09df615ee",
+      "environmentId": "4ba85ada-d056-4c29-acaf-60ae9ef62815",
+      "runtimeBase": "https://bru-2.api.camunda.io/a05207f4-e054-46cd-b4c2-74e09df615ee",
+      "runtimeClientName": "FHNW-Camunda-Onboarding-Brugg",
+      "runtimeCredentialsFile": "credentials_brugg_runtime.txt"
+    },
+    "olten": {
+      "clusterId": "9e9a078d-fcd4-4ad4-95b7-ba233b479506",
+      "environmentId": "c6aa2a58-0c5a-4249-8bb1-6e618b9476b0",
+      "runtimeBase": "https://bru-2.api.camunda.io/9e9a078d-fcd4-4ad4-95b7-ba233b479506",
+      "runtimeClientName": "FHNW-Camunda-Onboarding-Olten",
+      "runtimeCredentialsFile": "credentials_olten_runtime.txt"
+    }
+  }
+}
