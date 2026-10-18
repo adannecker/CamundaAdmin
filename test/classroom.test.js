@@ -339,3 +339,11 @@ test('unknown runtime accounts do not produce a runtime confirmation or full ass
   known = true; f.advance(); await f.manager.access.tick();
   assert.equal(log.query({ event: 'student.runtime' }).events.length, 1); assert.equal(log.query({ event: 'student.assigned' }).events.length, 1);
 });
+
+test('a successful invitation-only worker check clears an old rate-limit error without assigning pending users', async t => {
+  const f = fixture(t, { database: true, missingStudent: 'one@example.org' }), r = await f.provision(await f.draft());
+  await f.manager.access.tick();
+  const data = f.manager.load(); data.classes[0].autoAccess.lastError = 'OAuth: HTTP 429'; f.manager.save(data);
+  const count = f.writes.length; f.advance(); await f.manager.access.tick();
+  const c = f.manager.get(r.classroom.id); assert.equal(c.autoAccess.lastError, undefined); assert.equal(c.autoAccess.status, 'waiting'); assert.equal(c.status, 'pending'); assert.equal(f.writes.length, count);
+});
