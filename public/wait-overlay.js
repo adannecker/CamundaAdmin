@@ -24,6 +24,7 @@
     return null;
   }
   function render() {
+    if (window.SessionState?.expired) { if (dialog.open) dialog.close(); started = 0; return; }
     const request = [...pending.values()].sort((a, b) => b.priority - a.priority)[0], run = runs[0];
     if (!request && !run) { if (dialog.open) dialog.close(); started = 0; return; }
     if (!started) started = Date.now();
@@ -34,6 +35,7 @@
     if (!dialog.open) dialog.showModal();
   }
   dialog.addEventListener('cancel', event => event.preventDefault());
+  window.addEventListener('session-expired', render);
   // Explicit tasks also cover local work and reading the response body.
   window.WaitOverlay = {
     begin(info) {
@@ -54,6 +56,7 @@
     finally { pending.delete(id); render(); }
   };
   async function poll() {
+    if (window.SessionState?.expired) return;
     try {
       const response = await originalFetch('/api/cleanup/progress', { signal: AbortSignal.timeout(5000), cache: 'no-store' });
       if (!response.ok) throw new Error('Fortschritt nicht erreichbar');

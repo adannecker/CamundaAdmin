@@ -1,6 +1,23 @@
 (() => {
   const base = document.querySelector('meta[name="app-base"]')?.content || '';
   const csrf = document.querySelector('meta[name="app-csrf"]')?.content || '';
+  let expired = false;
+  const overlay = document.createElement('dialog');
+  overlay.id = 'session-dialog'; overlay.className = 'session-dialog';
+  overlay.setAttribute('aria-labelledby', 'session-dialog-title'); overlay.setAttribute('aria-describedby', 'session-dialog-detail');
+  const content = document.createElement('div'); content.className = 'dialog-content';
+  const heading = document.createElement('h2'); heading.id = 'session-dialog-title'; heading.textContent = 'Erneut mit AAI anmelden';
+  const detail = document.createElement('p'); detail.id = 'session-dialog-detail';
+  const actions = document.createElement('div'); actions.className = 'dialog-actions';
+  const login = document.createElement('a'); login.className = 'session-login'; login.href = base + '/auth/login'; login.textContent = 'Jetzt mit AAI anmelden';
+  actions.append(login); content.append(heading, detail, actions); overlay.append(content); document.body.append(overlay);
+  overlay.addEventListener('cancel', event => event.preventDefault());
+  function requireLogin(message = 'Deine Sitzung ist abgelaufen oder wurde durch einen Neustart beendet. Bitte melde dich erneut an, um weiterzuarbeiten.') {
+    expired = true; detail.textContent = message;
+    window.dispatchEvent(new Event('session-expired'));
+    if (!overlay.open) { overlay.showModal(); login.focus(); }
+  }
+  window.SessionState = { get expired() { return expired; } };
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
     const original = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
@@ -23,6 +40,7 @@
         login.href = base + '/auth/login'; login.textContent = 'Erneut mit AAI anmelden';
         notice.append(login);
       }
+      requireLogin();
     }
     return response;
   };
@@ -35,7 +53,7 @@
     const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Abmelden';
     button.addEventListener('click', async () => {
       button.disabled = true;
-      try { const response = await window.fetch('/auth/logout', { method: 'POST' }); if (!response.ok) throw Error(); location.assign((await response.json()).redirect); }
+      try { const response = await window.fetch('/auth/logout', { method: 'POST' }); if (!response.ok) throw Error(); requireLogin('Du bist abgemeldet. Melde dich erneut mit AAI an, um Camunda Admin weiterzuverwenden.'); }
       catch { button.disabled = false; area.hidden = false; area.textContent = 'Abmelden fehlgeschlagen. Bitte Seite neu laden.'; }
     });
     box.append(name, button); document.querySelector('aside')?.append(box);
