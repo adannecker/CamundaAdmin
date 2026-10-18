@@ -7,13 +7,13 @@ const vm = require('node:vm');
 test('expired local API requests retain a working AAI login link, including repeated failures', async () => {
   const requests = [];
   function element(tag) {
-    return { tag, children: [], hidden: false, append(...nodes) { this.children.push(...nodes); }, replaceChildren(...nodes) { this.children = nodes; }, setAttribute() {}, addEventListener() {} };
+    return { tag, children: [], hidden: false, append(...nodes) { this.children.push(...nodes); }, prepend(...nodes) { this.children.unshift(...nodes); }, replaceChildren(...nodes) { this.children = nodes; }, setAttribute() {}, addEventListener() {} };
   }
-  const aside = element('aside');
+  const aside = element('aside'), main = element('main');
   const document = {
-    querySelector(selector) { return selector === 'aside' ? aside : { content: selector.includes('app-base') ? '/camundaadmin' : 'test-csrf' }; },
+    querySelector(selector) { return selector === 'aside' ? aside : selector === 'main' ? main : { content: selector.includes('app-base') ? '/camundaadmin' : 'test-csrf' }; },
     createElement: element, createTextNode: text => ({ text }),
-    getElementById: id => aside.children.find(node => node.id === id),
+    getElementById: id => [...main.children, ...aside.children].find(node => node.id === id),
   };
   const response = { status: 401 };
   const window = { fetch: async (url, init) => { requests.push({ url, init }); return response; } };
@@ -21,6 +21,8 @@ test('expired local API requests retain a working AAI login link, including repe
     document, window, URL, Request, Headers, location: { href: 'https://example.test/camundaadmin/', origin: 'https://example.test' },
   });
   const notice = document.getElementById('session-notice');
+  assert.equal(main.children[0], notice);
+  assert.equal(notice.className, 'session-notice');
   assert.equal(notice.hidden, true);
   for (let i = 0; i < 2; i++) {
     assert.equal(await window.fetch('/api/classes'), response);

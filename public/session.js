@@ -27,8 +27,8 @@
     return response;
   };
   const area = document.createElement('div');
-  area.id = 'session-notice'; area.className = 'read-only'; area.hidden = true; area.setAttribute('role', 'alert');
-  document.querySelector('aside')?.append(area);
+  area.id = 'session-notice'; area.className = 'session-notice'; area.hidden = true; area.setAttribute('role', 'alert');
+  document.querySelector('main')?.prepend(area);
   if (csrf) {
     const box = document.createElement('div'); box.className = 'read-only';
     const name = document.createElement('div'); name.textContent = 'AAI · Owner';

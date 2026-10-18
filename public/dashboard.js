@@ -14,6 +14,7 @@ function renderLiveCard(id, result) {
 }
 async function readLiveSite(id, background = false) {
  const response = await fetch('/api/' + id + '/live' + (background ? '?background=1' : ''), { signal: AbortSignal.timeout(55000) });
+ if (response.status === 401) throw Object.assign(new Error('Die Anmeldung bei Camunda Admin ist abgelaufen. Bitte erneut mit AAI anmelden. Die Camunda-Verbindung wurde nicht geprüft.'), { sessionExpired: true });
  if (!response.ok) throw new Error('HTTP ' + response.status);
  const result = await response.json(); liveResults.set(id, result); renderLiveCard(id, result); return result;
 }
@@ -35,7 +36,7 @@ async function checkLive() {
  cards.innerHTML=['Basel','Brugg','Olten'].map(name=>'<article class="card" id="card-'+name.toLowerCase()+'"><h3>'+name+'</h3><p role="status">Verbindung wird geprüft …</p></article>').join('');
  await Promise.all(['basel','brugg','olten'].map(async id=>{
  try { const result = await readLiveSite(id); if (result.clusters?.some(c => c.start?.pending)) watchCluster(id); }
- catch(error){document.querySelector('#card-'+id).innerHTML='<h3>'+escapeHtml(id)+'</h3><span class="badge bad">Prüfung fehlgeschlagen</span><p>'+escapeHtml(error.message)+'</p>';}
+ catch(error){document.querySelector('#card-'+id).innerHTML='<h3>'+siteLabel(id)+'</h3><span class="badge'+(error.sessionExpired?'':' bad')+'">'+(error.sessionExpired?'Anmeldung erforderlich':'Prüfung fehlgeschlagen')+'</span><p>'+escapeHtml(error.message)+'</p>';}
  })); checking=false;document.querySelector('#refresh').disabled=false;
 }
 cards.addEventListener('click', async event => {
