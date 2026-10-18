@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { createWebAuth, settings: authSettings } = require('./lib/web-auth');
 const { ActivityLog } = require('./lib/activity-log');
 const { OpenAssignments } = require('./lib/open-assignments');
+const { reconcileClassCleanup } = require('./lib/class-cleanup-state');
 const { CamundaApi, readCredentials: readApiCredentials } = require('./lib/camunda-api');
 const { Cleanup } = require('./lib/cleanup');
 const { LecturerResources } = require('./lib/lecturer-resources');
@@ -51,6 +52,9 @@ function cleanupContext(site) {
 const cleanup = new Cleanup({ root: ROOT, contextForSite: cleanupContext });
 const lecturerResources = new LecturerResources({ root: ROOT, contextForSite: cleanupContext, cleanup });
 const classroom = new Classroom({ root: ROOT, contextForSite: cleanupContext, cleanup });
+reconcileClassCleanup(ROOT);
+const applyCleanup = cleanup.apply.bind(cleanup);
+cleanup.apply = async (...args) => { const result = await applyCleanup(...args); reconcileClassCleanup(ROOT, { busy: classroom.busy }); return result; };
 const activity = new ActivityLog(ROOT);
 const assignments = new OpenAssignments({ root: ROOT, classroom, contextForSite: cleanupContext });
 activity.importReceipts(classroom.load().classes);
@@ -72,7 +76,7 @@ for (const [target, method, event, describe] of [
   [adminReconciler, 'preview', 'roles.preview', () => ({})], [adminReconciler, 'apply', 'roles.apply', () => ({})],
 ]) activity.wrap(target, method, event, describe);
 // Internal service worker; runs only while this local server is running.
-const completeClassAccess = () => activity.run({ actor: 'Automatik', runId: crypto.randomUUID() }, () => classroom.access.tick()).catch(() => console.error('Automatische Klassen-Zuweisung konnte nicht geprüft werden.'));
+const completeClassAccess = () => activity.run({ actor: 'Automatik', runId: crypto.randomUUID() }, () => { reconcileClassCleanup(ROOT, { busy: classroom.busy }); return classroom.access.tick(); }).catch(() => console.error('Automatische Klassen-Zuweisung konnte nicht geprüft werden.'));
 
 const resources = {
   members: { label: 'Member', kind: 'console', method: 'GET', path: 'members' },
@@ -875,6 +879,7 @@ async function dispatchRequest(request, response, url) {
   }
   if (request.method === 'GET' && url.pathname === '/api/operations/pending') {
     try {
+      reconcileClassCleanup(ROOT, { busy: classroom.busy });
       const filters = Object.fromEntries(url.searchParams), refresh = filters.refresh === '1';
       const read = () => assignments.get(filters, refresh);
       return sendJson(response, 200, refresh ? await activity.operation('access.check', { site: filters.site, lecturerEmail: filters.lecturerEmail }, read) : await read());
@@ -887,7 +892,7 @@ async function dispatchRequest(request, response, url) {
     catch (error) { return sendJson(response, error.status || 502, { error: error.message }); }
   }
   if (request.method === 'GET' && url.pathname === '/api/classes') {
-    try { return sendJson(response, 200, classroom.metadata()); } catch (error) { return sendJson(response, 502, { error: error.message }); }
+    try { reconcileClassCleanup(ROOT, { busy: classroom.busy }); return sendJson(response, 200, classroom.metadata()); } catch (error) { return sendJson(response, 502, { error: error.message }); }
   }
   const classRoutes = { '/api/classes/access/configure': input => classroom.access.configure(input.classId, input.enabled), '/api/classes/import/preview': input => classroom.importPreview(input), '/api/classes/import/save': input => classroom.saveImport(input.previewId, input.acknowledged), '/api/classes/provision/preview': input => classroom.provisionPreview(input.classId), '/api/classes/provision/apply': input => classroom.provision(input.previewId, input.acknowledged), '/api/classes/move/preview': input => classroom.movePreview(input.classId, input.email, input.targetGroupId), '/api/classes/move/apply': input => classroom.move(input.previewId, input.acknowledged), '/api/classes/groups': input => classroom.addGroup(input.classId, input.name) };
   if (request.method === 'POST' && classRoutes[url.pathname]) {

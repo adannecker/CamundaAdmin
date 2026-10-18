@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { ActivityLog, remoteWrite } = require('../lib/activity-log');
 const { OpenAssignments } = require('../lib/open-assignments');
+const { reconcileClassCleanup } = require('../lib/class-cleanup-state');
 
 function directory(t) { const root = fs.mkdtempSync(path.join(os.tmpdir(), 'camunda-operations-')); t.after(() => fs.rmSync(root, { recursive: true, force: true })); return root; }
 test('activity survives restart, filters exactly and pages without losing events with identical timestamps', async t => {
@@ -86,4 +87,42 @@ test('permission failures stay unknown, and drafts and unsafe groups are never d
   f.state.failRuntime = false; f.state.rights = false; result = await f.service.get({}, true); assert.equal(result.classes[0].groups[0].students[0].rights.state, 'missing');
   f.state.failOrg = true; result = await f.service.get({}, true); assert.equal(result.classes[0].groups[0].students[0].organization.state, 'unknown');
   f.c.status = 'draft'; result = await f.service.get({}, true); assert.equal(result.summary.ready, 0); assert.equal(result.classes[0].groups[0].students[0].runtime.state, 'not_prepared'); assert.ok(result.classes[0].issues.length);
+});
+
+test('a formerly completed class with subsequently missing access requires review rather than claiming completion', async t => {
+  const f = assignmentsFixture(t); f.c.status = 'ready'; f.c.autoAccess.status = 'completed';
+  const result = await f.service.get({}, true);
+  assert.equal(result.classes[0].automatic.status, 'needs_review');
+  assert.equal(result.summary.ready, 0); assert.ok(result.classes[0].issues.some(s => s.includes('früheren Einrichtungsabschluss')));
+});
+
+test('confirmed cleanup reconciles all targets, disables automation and hides retired students from pending totals', async t => {
+  const f = assignmentsFixture(t), root = path.dirname(f.service.file), classFile = path.join(root, 'classes.local.json');
+  f.c.createdAt = '2026-10-18T08:00:00Z'; f.c.autoAccess.authorizedAt = '2026-10-18T09:00:00Z'; f.c.status = 'ready'; f.c.autoAccess.status = 'completed';
+  fs.writeFileSync(classFile, JSON.stringify({ schemaVersion: 1, classes: [f.c] }));
+  const receipt = { site: 'basel', status: 'completed', checkedAt: '2026-10-18T10:00:00Z', results: [
+    { kind: 'students', id: 'student@example.org', status: 'verified' }, { kind: 'workspaces', id: 'workspace-1', status: 'verified' },
+    { kind: 'groups', id: 'group-1', status: 'verified' }, { kind: 'tenants', id: 'tenant-1', status: 'verified' },
+  ] };
+  fs.writeFileSync(path.join(root, 'cleanup-basel-aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa.local.json'), JSON.stringify(receipt));
+  assert.equal(reconcileClassCleanup(root), 1); assert.equal(reconcileClassCleanup(root), 0);
+  Object.assign(f.c, JSON.parse(fs.readFileSync(classFile)).classes[0]);
+  assert.equal(f.c.status, 'cleaned'); assert.equal(f.c.autoAccess.enabled, false); assert.equal(f.c.autoAccess.status, 'cleanup');
+  const normal = await f.service.get(); assert.equal(normal.classes.length, 0); assert.equal(normal.summary.cleaned, 1); assert.equal(normal.summary.students, 0);
+  const history = await f.service.get({ includeCleaned: '1' }, true); assert.equal(history.classes.length, 1); assert.equal(history.summary.students, 0);
+  assert.equal(history.classes[0].groups[0].students[0].organization.state, 'removed'); assert.equal(history.classes[0].automatic.status, 'cleanup');
+});
+
+test('uncertain, old and other-site deletions never retire a new class; partial confirmed deletion stops its automation', t => {
+  const root = directory(t), file = path.join(root, 'classes.local.json');
+  const c = { id: 'test', site: 'basel', createdAt: '2026-10-18T09:00:00Z', status: 'ready', autoAccess: { enabled: true, status: 'completed' }, groups: [{ workspaceKey: 'w', tenantId: 't', runtimeGroupId: 'g', students: [{ email: 'student@example.org' }] }] };
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, classes: [c] }));
+  const receiptFile = path.join(root, 'cleanup-basel-aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa.local.json');
+  const receipt = { site: 'basel', status: 'incomplete', checkedAt: '2026-10-18T10:00:00Z', results: [{ kind: 'students', id: 'student@example.org', status: 'uncertain' }] };
+  fs.writeFileSync(receiptFile, JSON.stringify(receipt)); assert.equal(reconcileClassCleanup(root), 0);
+  receipt.results[0].status = 'verified'; receipt.site = 'olten'; fs.writeFileSync(receiptFile, JSON.stringify(receipt)); assert.equal(reconcileClassCleanup(root), 0);
+  receipt.site = 'basel'; receipt.checkedAt = '2026-10-18T08:00:00Z'; fs.writeFileSync(receiptFile, JSON.stringify(receipt)); assert.equal(reconcileClassCleanup(root), 0);
+  receipt.checkedAt = '2026-10-18T10:00:00Z'; fs.writeFileSync(receiptFile, JSON.stringify(receipt)); assert.equal(reconcileClassCleanup(root), 1);
+  const updated = JSON.parse(fs.readFileSync(file)).classes[0]; assert.equal(updated.status, 'attention'); assert.equal(updated.autoAccess.enabled, false);
+  assert.deepEqual(updated.cleanupState.students, ['student@example.org']);
 });

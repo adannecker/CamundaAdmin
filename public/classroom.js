@@ -1,6 +1,6 @@
 (() => {
   const el = id => document.getElementById(id), html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
-  const states = { draft: 'Lokaler Entwurf', ready: 'Eingerichtet', pending: 'Einladungen / Zugriffe ausstehend', attention: 'Nachprüfung erforderlich' };
+  const states = { draft: 'Lokaler Entwurf', ready: 'Eingerichtet', pending: 'Einladungen / Zugriffe ausstehend', attention: 'Nachprüfung erforderlich', cleaned: 'Im Cleanup bereinigt' };
   let data = null, busy = false, importPlan = null, actionPlan = null;
   const selected = () => data?.classes.find(c => c.site === el('class-site').value && c.lecturerEmail === el('class-lecturer').value && c.day === el('class-day').value);
   async function json(url, options) {
@@ -20,7 +20,7 @@
     }
   }
   const post = (url, input, long = false, timeoutMs = 180000) => json(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(long ? 20 * 60000 : timeoutMs) });
-  function controls() { document.querySelectorAll('#students button,#students select,#students input,#class-dialog button,#class-dialog input').forEach(e => { e.disabled = busy; }); el('class-dialog-apply').disabled = busy || !actionPlan || !el('class-dialog-ack').checked; el('class-import-save').hidden = !importPlan; const c = selected(); if (el('class-provision')) el('class-provision').disabled = busy || Boolean(c?.pendingMove || c?.uncertainCreate); }
+  function controls() { document.querySelectorAll('#students button,#students select,#students input,#class-dialog button,#class-dialog input').forEach(e => { e.disabled = busy; }); el('class-dialog-apply').disabled = busy || !actionPlan || !el('class-dialog-ack').checked; el('class-import-save').hidden = !importPlan; const c = selected(); if (el('class-provision')) el('class-provision').disabled = busy || Boolean(c?.pendingMove || c?.uncertainCreate || c?.status === 'cleaned'); }
   function lecturers() { const previous = el('class-lecturer').value; el('class-lecturer').innerHTML = data.lecturers.filter(p => p.sites[el('class-site').value]).map(p => '<option value="' + html(p.email) + '">' + html(p.name || p.email) + '</option>').join(''); if ([...el('class-lecturer').options].some(o => o.value === previous)) el('class-lecturer').value = previous; }
   function cards(c, preview = false) {
     const pending = new Map((c.pendingStudents || []).map(s => [s.email, s.reason]));
@@ -32,6 +32,7 @@
   }
   function automaticAccess(c) {
     if (c.status === 'draft') return '';
+    if (c.cleanupState) return '<div class="analysis-note">Bestätigter Cleanup: Die Automatik ist deaktiviert. Eine vollständig bereinigte Klasse kann durch einen neuen Excel-Import erneut vorbereitet werden.</div>';
     const a = c.autoAccess;
     const active = a?.enabled && a.status !== 'stopped';
     return '<div class="analysis-note" id="class-auto-access"><strong>' + (c.status === 'ready' ? 'Alle Benutzerzugriffe sind eingerichtet.' : active ? 'Automatische Vervollständigung aktiv' : 'Automatische Vervollständigung pausiert') + '</strong><p>' + (active ? 'Der laufende Dienst prüft ausstehende Zugriffe jede Minute. Einladung annehmen und einmal anmelden genügt; der Dozent muss keinen weiteren Einrichtungslauf starten.' : 'Die bereits freigegebenen Benutzerzuweisungen können automatisch ergänzt werden, sobald die Konten verfügbar sind.') + '</p>' + (a?.lastCheckAt ? '<small>Zuletzt geprüft: ' + html(new Date(a.lastCheckAt).toLocaleString('de-DE')) + '</small>' : '') + (a?.lastError ? '<p class="admin-warning">' + html(a.lastError) + '</p>' : '') + '<button class="action" data-class-auto="' + (active ? 'false' : 'true') + '">' + (active ? 'Automatik pausieren' : 'Automatik aktivieren') + '</button></div>';

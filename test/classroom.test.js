@@ -76,6 +76,16 @@ test('import and local group edits do not write to Camunda and use lecturer/day/
   f.manager.addGroup(c.id, 'Gruppe 4'); assert.equal(f.manager.get(c.id).groups.length, 4);
 });
 
+test('a completely cleaned class can be imported anew without reusing old invitation receipts or deleting its history', async t => {
+  const f = fixture(t), c = await f.draft();
+  c.status = 'cleaned'; c.cleanupState = { students: ['one@example.org'] }; c.invitationAttempts = { 'one@example.org': { status: 'submitted' } }; c.autoAccess = { status: 'cleanup', enabled: false };
+  f.manager.save({ schemaVersion: 1, classes: [c] });
+  await assert.rejects(f.manager.provisionPreview(c.id), /bereinigt/);
+  const plan = await f.manager.importPreview(f.input), result = f.manager.saveImport(plan.previewId, true);
+  assert.equal(result.classroom.status, 'draft'); assert.equal(result.classroom.cleanupState, undefined); assert.equal(result.classroom.invitationAttempts, undefined);
+  const stored = f.manager.load(); assert.equal(stored.archivedClasses.length, 1); assert.equal(stored.archivedClasses[0].status, 'cleaned'); assert.equal(f.writes.length, 0);
+});
+
 test('configured lecturer and owner accounts are listed separately while students continue to provisioning', async t => {
   const f = fixture(t, { students: [
     { email: 'one@example.org', name: 'One', group: 'Gruppe 1' },

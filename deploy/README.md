@@ -85,6 +85,17 @@ verwirft dessen Gültigkeit. Zeitpunkt und unbekannte/fehlende Antworten bleiben
 sichtbar. Die Funktion verschickt keine Einladungen und aktiviert keine
 Automatik. `Meine Klassen` filtert nach dem angemeldeten Owner-Konto.
 
+Lesend bestätigte Cleanup-Ergebnisse werden auch in die lokale Klassenablage
+übernommen (einschließlich vorhandener Belege beim Start). Betroffene Automatik
+wird deaktiviert; vollständig gelöschte Klassen heißen `cleaned` und werden in
+der offenen Liste standardmäßig ausgeblendet. Sie lassen sich über „Bereinigte
+Klassen anzeigen“ nachvollziehen. Ein neuer Excel-Import ersetzt eine vollständig
+bereinigte Klasse durch einen frischen Entwurf ohne alte Einladungsbelege; der
+vorherige Stand bleibt in `classes.local.json` unter `archivedClasses` erhalten.
+Unbestätigte Löschversuche und Belege vor dem neuen Klassenlauf lösen diese
+Umstellung nicht aus. Live-Abweichungen von einem früheren Einrichtungsabschluss
+werden als Nachprüfung angezeigt und nicht automatisch repariert.
+
 Für konsistente Backups die Anwendung stoppen und die gesamte `data/`-Ablage
 einschließlich eventuell vorhandener SQLite-WAL-Dateien sichern. Die Datenbank
 und die Statusdatei sind ebenso privat wie die Klassenlisten und nicht im Git.

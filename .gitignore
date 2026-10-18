@@ -1,6 +1,7 @@
 # Local Camunda access data must never be committed.
 credentials_*.txt
 credentials_*.txt.bak
+*_credentials.txt
 *.local.json
 *.local.sqlite*
 *.local.jsonl
