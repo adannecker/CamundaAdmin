@@ -66,3 +66,25 @@ werden. `configure-proxy.py` bewahrt den Inode der eingebundenen Proxydatei.
 nur zum Einrichten dieses Clients. Es prüft die AAI-Verknüpfung des Owners und
 verweigert die Übernahme eines fremden Clients mit gleichem Namen. Die
 Bootstrap-Datei muss nach dem Lauf entfernt werden. Keine Secrets in Logs ausgeben.
+
+## Ereignisse und offene Zuweisungen
+
+Das Ereignisprotokoll liegt dauerhaft in `data/operations.local.sqlite` (SQLite
+mit WAL). Es enthält Auslöser, Zeitpunkt, Standort, Dozent, Klasse, Laufkennung,
+Aktion und Ergebnis. Request-/Response-Bodies, API-Schlüssel, Tokens und
+Excel-Zellen werden nicht protokolliert. Beim ersten Start werden vorhandene
+Ausführungsbelege einmalig als Historie übernommen; deren Zeitpunkt ist der
+Belegzeitpunkt. Ältere Einzelaktionen ohne Beleg sind nicht rekonstruierbar.
+Externe Änderungen direkt in Camunda gehören nicht zu diesem Dienstprotokoll.
+
+`Offene Zuweisungen` liest auf Knopfdruck Organisationseinladungen,
+Workspace-Mitgliedschaften, Runtime-Gruppen und die vorgesehenen Gruppenrechte.
+Es erfolgen dabei ausschließlich GETs und Such-POSTs. Der letzte Stand bleibt
+in `data/assignment-status.local.json` erhalten; eine Änderung an der Klasse
+verwirft dessen Gültigkeit. Zeitpunkt und unbekannte/fehlende Antworten bleiben
+sichtbar. Die Funktion verschickt keine Einladungen und aktiviert keine
+Automatik. `Meine Klassen` filtert nach dem angemeldeten Owner-Konto.
+
+Für konsistente Backups die Anwendung stoppen und die gesamte `data/`-Ablage
+einschließlich eventuell vorhandener SQLite-WAL-Dateien sichern. Die Datenbank
+und die Statusdatei sind ebenso privat wie die Klassenlisten und nicht im Git.

@@ -34,7 +34,7 @@
     if (c.status === 'draft') return '';
     const a = c.autoAccess;
     const active = a?.enabled && a.status !== 'stopped';
-    return '<div class="analysis-note" id="class-auto-access"><strong>' + (c.status === 'ready' ? 'Alle Benutzerzugriffe sind eingerichtet.' : active ? 'Automatische Vervollständigung aktiv' : 'Automatische Vervollständigung pausiert') + '</strong><p>' + (active ? 'Der laufende lokale Dienst prüft ausstehende Zugriffe jede Minute. Einladung annehmen und einmal anmelden genügt; der Dozent muss keinen weiteren Einrichtungslauf starten.' : 'Die bereits freigegebenen Benutzerzuweisungen können automatisch ergänzt werden, sobald die Konten verfügbar sind.') + '</p>' + (a?.lastCheckAt ? '<small>Zuletzt geprüft: ' + html(new Date(a.lastCheckAt).toLocaleString('de-DE')) + '</small>' : '') + (a?.lastError ? '<p class="admin-warning">' + html(a.lastError) + '</p>' : '') + '<button class="action" data-class-auto="' + (active ? 'false' : 'true') + '">' + (active ? 'Automatik pausieren' : 'Automatik aktivieren') + '</button></div>';
+    return '<div class="analysis-note" id="class-auto-access"><strong>' + (c.status === 'ready' ? 'Alle Benutzerzugriffe sind eingerichtet.' : active ? 'Automatische Vervollständigung aktiv' : 'Automatische Vervollständigung pausiert') + '</strong><p>' + (active ? 'Der laufende Dienst prüft ausstehende Zugriffe jede Minute. Einladung annehmen und einmal anmelden genügt; der Dozent muss keinen weiteren Einrichtungslauf starten.' : 'Die bereits freigegebenen Benutzerzuweisungen können automatisch ergänzt werden, sobald die Konten verfügbar sind.') + '</p>' + (a?.lastCheckAt ? '<small>Zuletzt geprüft: ' + html(new Date(a.lastCheckAt).toLocaleString('de-DE')) + '</small>' : '') + (a?.lastError ? '<p class="admin-warning">' + html(a.lastError) + '</p>' : '') + '<button class="action" data-class-auto="' + (active ? 'false' : 'true') + '">' + (active ? 'Automatik pausieren' : 'Automatik aktivieren') + '</button></div>';
   }
   function render() {
     const c = selected();
@@ -43,6 +43,12 @@
   }
   async function refresh() { if (busy) return; busy = true; controls(); const previous = el('class-lecturer').value; try { data = await json('/api/classes'); lecturers(); if (previous && [...el('class-lecturer').options].some(o => o.value === previous)) el('class-lecturer').value = previous; render(); el('class-status').textContent = 'Klassen geladen. Neue Klassen benötigen eine Bestätigung; aktivierte automatische Benutzerzuweisungen laufen im Hintergrund.'; } catch (error) { el('class-status').textContent = error.message; } finally { busy = false; controls(); render(); } }
   document.querySelector('[data-section="students"]').addEventListener('click', () => { if (!data) refresh(); });
+  window.addEventListener('open-class', async event => {
+    await refresh();
+    if (!data) return;
+    el('class-site').value = event.detail.site; lecturers(); el('class-lecturer').value = event.detail.lecturerEmail; el('class-day').value = event.detail.day; render();
+    document.querySelector('[data-section="students"]').click();
+  });
   el('class-refresh').addEventListener('click', refresh);
   function importStatus(message, error = false) {
     el('class-status').textContent = message;

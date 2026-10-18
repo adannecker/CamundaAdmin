@@ -30,7 +30,7 @@ function fixture() {
     if (url.endsWith('/apply')) return { ok: true, json: () => apply.promise };
     assert.fail('Unexpected request ' + url);
   };
-  const window = { WaitOverlay: { begin(info) { const task = { info, ended: false, update(detail) { this.info.detail = detail; }, end() { this.ended = true; } }; tasks.push(task); return task; } } };
+  const window = { addEventListener() {}, WaitOverlay: { begin(info) { const task = { info, ended: false, update(detail) { this.info.detail = detail; }, end() { this.ended = true; } }; tasks.push(task); return task; } } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/classroom.js'), 'utf8'), { document, window, fetch, AbortSignal, setTimeout, clearTimeout, setInterval: () => 0 });
   return { element, calls, tasks, classroom, preview, apply, async open() {
     await element('class-refresh').listeners.click();

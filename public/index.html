@@ -15,11 +15,12 @@
     .cleanup-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:22px}.cleanup-column{border:1px solid #dce3ee;border-radius:10px;padding:16px;min-width:0}.cleanup-column h3{margin:0 0 14px}.cleanup-all,.cleanup-choice{display:flex;align-items:start;gap:10px}.cleanup-all{font-weight:650;border-bottom:1px solid #dce3ee;padding-bottom:14px}.cleanup-column input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#168368;margin-top:2px}.cleanup-list{max-height:440px;overflow:auto}.cleanup-choice{margin:0;padding:14px 0;border-bottom:1px solid #eef1f5;overflow-wrap:anywhere}.cleanup-choice small{display:block;color:#68758a;font-size:12px;line-height:1.5;margin-top:4px}.cleanup-choice.blocked{opacity:.65}.cleanup-selection-footer{display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap;margin-top:22px}.cleanup-dialog{width:min(850px,calc(100vw - 40px));max-height:88vh;overflow:auto}.cleanup-dialog .cleanup-ack{display:flex;gap:10px;align-items:start;line-height:1.5}.cleanup-dialog input{width:18px;height:18px;flex-shrink:0}.cleanup-dialog li{overflow-wrap:anywhere;line-height:1.6}.cleanup-result{padding:14px;background:#eef5fb;border-radius:8px}.cleanup-error{color:#9c2f2f}@media(max-width:1050px){.cleanup-columns{grid-template-columns:1fr}.cleanup-list{max-height:330px}}
     @media(max-width:720px){aside{min-height:0}main{width:100%}.sections{grid-template-columns:repeat(3,1fr)}.sections button{padding:10px 6px}}
   </style>
+<link rel="stylesheet" href="/operations.css">
 </head>
 <body>
 <aside>
   <div class="brand"><span>Camunda</span> Admin</div><p class="sidebar-label">Bereiche</p>
-  <nav class="sections"><button class="active" data-section="live">Live</button><button data-section="cleanup">Cleanup · Analyse</button><button data-section="students">Klassen &amp; Gruppen</button><button data-section="setup">Admin · Standorte</button><button data-section="admin">Admin · Dozenten</button></nav>
+  <nav class="sections"><button class="active" data-section="live">Live</button><button data-section="pending">Offene Zuweisungen</button><button data-section="activity">Ereignisprotokoll</button><button data-section="cleanup">Cleanup · Analyse</button><button data-section="students">Klassen &amp; Gruppen</button><button data-section="setup">Admin · Standorte</button><button data-section="admin">Admin · Dozenten</button></nav>
   <div class="read-only">Verwaltung mit Vorschau<br><small>Cleanup nur nach Auswahl und Bestätigung.</small></div>
 </aside>
 <main>
@@ -75,6 +76,8 @@
       <div id="admin-role-preview" class="admin-preview"></div>
     </div>
   </section>
+  <section id="activity" data-panel="activity" hidden></section>
+  <section id="pending" data-panel="pending" hidden></section>
 </main>
 <dialog id="admin-local-remove-dialog" class="cleanup-dialog" aria-labelledby="admin-local-remove-title"><div class="dialog-content"><h2 id="admin-local-remove-title">Aus lokaler Liste entfernen?</h2><p id="admin-local-remove-person"></p><p>Camunda-Mitgliedschaften, Workspaces und Tenants bleiben erhalten. Die Änderung wird erst mit „JSON speichern“ dauerhaft übernommen.</p><div class="dialog-actions"><button id="admin-local-remove-close" type="button">Abbrechen</button><button id="admin-local-remove-apply" type="button" class="danger">Aus Liste entfernen</button></div></div></dialog>
 <dialog id="admin-reconcile-dialog" class="admin-reconcile-dialog" aria-labelledby="admin-reconcile-title">
@@ -109,4 +112,5 @@
 <script src="/cleanup.js"></script>
 <script src="/lecturer-resources.js"></script>
 <script src="/classroom.js"></script>
+<script src="/operations.js"></script>
 </body></html>

@@ -3,6 +3,8 @@ const http = require('http');
 const path = require('path');
 const crypto = require('node:crypto');
 const { createWebAuth, settings: authSettings } = require('./lib/web-auth');
+const { ActivityLog } = require('./lib/activity-log');
+const { OpenAssignments } = require('./lib/open-assignments');
 const { CamundaApi, readCredentials: readApiCredentials } = require('./lib/camunda-api');
 const { Cleanup } = require('./lib/cleanup');
 const { LecturerResources } = require('./lib/lecturer-resources');
@@ -49,8 +51,28 @@ function cleanupContext(site) {
 const cleanup = new Cleanup({ root: ROOT, contextForSite: cleanupContext });
 const lecturerResources = new LecturerResources({ root: ROOT, contextForSite: cleanupContext, cleanup });
 const classroom = new Classroom({ root: ROOT, contextForSite: cleanupContext, cleanup });
+const activity = new ActivityLog(ROOT);
+const assignments = new OpenAssignments({ root: ROOT, classroom, contextForSite: cleanupContext });
+activity.importReceipts(classroom.load().classes);
+classroom.audit = activity;
+const classInfo = c => c ? { site: c.site, classId: c.id, lecturerEmail: c.lecturerEmail } : {};
+const classPlanInfo = id => classInfo(classroom.plans.get(id)?.classroom || classroom.load().classes.find(c => c.id === classroom.plans.get(id)?.classId));
+for (const [method, event, describe] of [
+  ['importPreview', 'excel.analyze', input => ({ site: input.site, lecturerEmail: input.lecturerEmail })],
+  ['saveImport', 'class.save', classPlanInfo], ['addGroup', 'class.group', id => classInfo(classroom.get(id))],
+  ['provisionPreview', 'class.preview', id => classInfo(classroom.get(id))], ['provision', 'class.provision', classPlanInfo],
+  ['movePreview', 'move.preview', (id, email) => ({ ...classInfo(classroom.get(id)), email })], ['move', 'class.move', id => ({ ...classPlanInfo(id), email: classroom.plans.get(id)?.email })],
+]) activity.wrap(classroom, method, event, describe);
+activity.wrap(classroom.access, 'configure', 'access.configure', id => classInfo(classroom.get(id)));
+for (const [target, method, event, describe] of [
+  [cleanup, 'analyze', 'cleanup.analyze', site => ({ site })], [cleanup, 'preview', 'cleanup.preview', site => ({ site })], [cleanup, 'apply', 'cleanup.apply', site => ({ site })],
+  [lecturerResources, 'preview', 'lecturer.preview', (site, email) => ({ site, email, lecturerEmail: email })],
+  [lecturerResources, 'apply', 'lecturer.apply', id => { const p = lecturerResources.plans.get(id); return p ? { site: p.site, email: p.email, lecturerEmail: p.email } : {}; }],
+  [siteSetup, 'apply', 'site.apply', site => ({ site })], [clusterStart, 'start', 'cluster.start', site => ({ site })],
+  [adminReconciler, 'preview', 'roles.preview', () => ({})], [adminReconciler, 'apply', 'roles.apply', () => ({})],
+]) activity.wrap(target, method, event, describe);
 // Internal service worker; runs only while this local server is running.
-const completeClassAccess = () => classroom.access.tick().catch(() => console.error('Automatische Klassen-Zuweisung konnte nicht geprüft werden.'));
+const completeClassAccess = () => activity.run({ actor: 'Automatik', runId: crypto.randomUUID() }, () => classroom.access.tick()).catch(() => console.error('Automatische Klassen-Zuweisung konnte nicht geprüft werden.'));
 
 const resources = {
   members: { label: 'Member', kind: 'console', method: 'GET', path: 'members' },
@@ -843,6 +865,21 @@ async function handleRequest(request, response) {
   if (!authorized) return;
   const { url } = authorized;
   response.authSession = authorized.session;
+  return activity.run({ actor: authorized.session?.user?.email || 'Lokaler Admin' }, () => dispatchRequest(request, response, url));
+}
+
+async function dispatchRequest(request, response, url) {
+  if (request.method === 'GET' && url.pathname === '/api/operations/events') {
+    try { return sendJson(response, 200, activity.query(Object.fromEntries(url.searchParams))); }
+    catch { return sendJson(response, 400, { error: 'Protokollfilter konnten nicht verarbeitet werden.' }); }
+  }
+  if (request.method === 'GET' && url.pathname === '/api/operations/pending') {
+    try {
+      const filters = Object.fromEntries(url.searchParams), refresh = filters.refresh === '1';
+      const read = () => assignments.get(filters, refresh);
+      return sendJson(response, 200, refresh ? await activity.operation('access.check', { site: filters.site, lecturerEmail: filters.lecturerEmail }, read) : await read());
+    } catch { return sendJson(response, 502, { error: 'Offene Zuweisungen konnten nicht geprüft werden. Gespeicherten Stand erneut laden.' }); }
+  }
   const clusterStartRoute = url.pathname.match(/^\/api\/(basel|brugg|olten)\/clusters\/start$/);
   if (request.method === 'POST' && clusterStartRoute) {
     if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Clusterstart nur lokal mit JSON und passender Herkunft erlaubt.' });
@@ -903,7 +940,7 @@ async function handleRequest(request, response) {
     if (!allowLocalConfigWrite(request)) return sendJson(response, 403, { error: 'Speichern ist nur lokal mit JSON und passender Herkunft erlaubt.' });
     try {
       const input = await readJsonBody(request);
-      return sendJson(response, 200, { ...saveAdminConfig(ADMIN_CONFIG_FILE, input.config, input.revision), file: 'admin-config.json', appliedToCamunda: false });
+      return sendJson(response, 200, await activity.operation('config.save', {}, () => ({ ...saveAdminConfig(ADMIN_CONFIG_FILE, input.config, input.revision), file: 'admin-config.json', appliedToCamunda: false })));
     } catch (error) { return sendJson(response, error.message.includes('zwischenzeitlich') ? 409 : 400, { error: error.message }); }
   }
   // All other writes, including legacy cleanup and permanent workspace deletion, remain disabled.
@@ -1187,6 +1224,8 @@ async function handleRequest(request, response) {
   if (request.method === 'GET' && url.pathname === '/cleanup.js') return serveStatic(response, 'cleanup.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/wait-overlay.js') return serveStatic(response, 'wait-overlay.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/session.js') return serveStatic(response, 'session.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/operations.js') return serveStatic(response, 'operations.js', 'application/javascript; charset=utf-8');
+  if (request.method === 'GET' && url.pathname === '/operations.css') return serveStatic(response, 'operations.css', 'text/css; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/lecturer-resources.js') return serveStatic(response, 'lecturer-resources.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/classroom.js') return serveStatic(response, 'classroom.js', 'application/javascript; charset=utf-8');
   if (request.method === 'GET' && url.pathname === '/app.js') return serveStatic(response, 'app.js', 'application/javascript; charset=utf-8');
@@ -1205,6 +1244,7 @@ async function start() {
     });
   });
   server.listen(PORT, HOST, () => {
+    activity.record({ event: 'service.start', status: 'completed', actor: 'Dienst', summary: 'Camunda Admin gestartet; bestehende Belege als Historie übernommen.' });
     console.log(`Camunda Admin läuft auf http://${HOST}:${PORT}${webAuth.config.basePath}/ (${webAuth.config.mode})`);
     if (process.env.CLASS_ACCESS_WORKER !== 'disabled') {
       setInterval(completeClassAccess, 60000).unref();

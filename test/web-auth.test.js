@@ -50,7 +50,7 @@ test('real signed OIDC flow, CSRF, logout, expiry, replay, foreign account and i
     const config = new oidc.Configuration({ issuer: env.OIDC_ISSUER, authorization_endpoint: 'https://id.test/auth', token_endpoint: providerBase + '/token', jwks_uri: providerBase + '/jwks', id_token_signing_alg_values_supported: ['RS256'] }, env.OIDC_CLIENT_ID, env.OIDC_CLIENT_SECRET);
     oidc.allowInsecureRequests(config); return config;
   } } });
-  for (const path of ['/api/admin/config', '/api/basel/members', '/dashboard.js', '/styles.css', '/api/cleanup/progress']) {
+  for (const path of ['/api/admin/config', '/api/basel/members', '/dashboard.js', '/styles.css', '/api/cleanup/progress', '/api/operations/events', '/api/operations/pending', '/operations.js', '/operations.css']) {
     const r = await call(gate, '/camundaadmin' + path); assert.equal(r.res.statusCode, 401); assert.equal(r.result, null);
   }
   assert.equal((await call(gate, '/api/admin/config')).res.statusCode, 404);

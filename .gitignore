@@ -2,6 +2,8 @@
 credentials_*.txt
 credentials_*.txt.bak
 *.local.json
+*.local.sqlite*
+*.local.jsonl
 cluster-start-*.local.json.*
 access.txt
 .env
