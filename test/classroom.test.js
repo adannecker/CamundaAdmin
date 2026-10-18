@@ -298,3 +298,44 @@ test('privileged students, stale previews, foreign collisions and cross-site inp
   const g = fixture(t), d = await g.draft(), plan = await g.manager.provisionPreview(d.id); g.state.workspaces.push({ workspaceKey: 'foreign', name: d.groups[0].workspaceName });
   const result = await g.manager.provision(plan.previewId, true); assert.equal(result.status, 'incomplete'); assert.equal(g.writes.length, 0);
 });
+
+test('student acceptance and verified assignments are logged once per person across checks and database restarts', async t => {
+  const { ActivityLog } = require('../lib/activity-log');
+  const f = fixture(t, { database: true, students: [{ email: 'one@example.org', name: 'One', group: 'Gruppe 1' }] });
+  let log = new ActivityLog(f.root); f.manager.audit = log;
+  const member = f.state.members.find(m => m.email === 'one@example.org'); member.invitePending = true;
+  const r = await f.provision(await f.draft());
+  const events = () => log.query({ q: 'one@example.org', limit: 100 }).events.filter(e => e.event.startsWith('student.'));
+  assert.equal(events().filter(e => e.event === 'student.accepted' || e.event === 'student.assigned').length, 0);
+  assert.equal(events().filter(e => e.event === 'student.workspace').length, 1);
+  assert.equal(events().filter(e => e.event === 'student.runtime').length, 1);
+  member.invitePending = false; f.advance(); const detectedAt = new Date(f.manager.now()).toISOString();
+  await log.run({ actor: 'Automatik' }, () => f.manager.access.tick());
+  const done = events(); assert.equal(done.length, 4);
+  const accepted = done.find(e => e.event === 'student.accepted'), assigned = done.find(e => e.event === 'student.assigned');
+  assert.equal(accepted.at, detectedAt); assert.match(accepted.summary, /kein Anmeldezeitpunkt/);
+  assert.equal(assigned.status, 'completed'); assert.equal(assigned.actor, 'Automatik');
+  assert.equal(assigned.email, member.email); assert.equal(assigned.groupName, 'Gruppe 1'); assert.equal(assigned.classId, r.classroom.id); assert.equal(assigned.site, 'basel');
+  assert.match(assigned.summary, /Workspace-Editor.*Runtime-Gruppe.*eigenen Tenant/);
+  const ids = done.map(e => e.id).sort(); dataStore.getStore(f.root).close(); dataStore.initializeStore(f.root);
+  log = new ActivityLog(f.root); f.manager.audit = log;
+  const again = await f.provision(f.manager.get(r.classroom.id)); assert.equal(again.status, 'completed', again.error);
+  assert.deepEqual(events().map(e => e.id).sort(), ids);
+  const all = log.query({ limit: 100 }).events;
+  assert.ok(all.filter(e => e.event === 'access.sync').every(e => e.email === '' && e.groupName === ''));
+});
+
+test('unknown runtime accounts do not produce a runtime confirmation or full assignment event', async t => {
+  const { ActivityLog } = require('../lib/activity-log');
+  const f = fixture(t, { database: true, students: [{ email: 'one@example.org', name: 'One', group: 'Gruppe 1' }] }), log = new ActivityLog(f.root); f.manager.audit = log;
+  f.state.members.find(m => m.email === 'one@example.org').invitePending = false;
+  const original = f.context.runtimeApi.runtime; let known = false;
+  f.context.runtimeApi.runtime = async (base, endpoint, request = {}) => {
+    if (!known && request.method === 'PUT' && endpoint.endsWith('/users/one%40example.org')) throw new ApiError('Unknown user', 404);
+    return original(base, endpoint, request);
+  };
+  const r = await f.provision(await f.draft()); assert.equal(r.classroom.status, 'pending');
+  assert.equal(log.query({ event: 'student.runtime' }).events.length, 0); assert.equal(log.query({ event: 'student.assigned' }).events.length, 0);
+  known = true; f.advance(); await f.manager.access.tick();
+  assert.equal(log.query({ event: 'student.runtime' }).events.length, 1); assert.equal(log.query({ event: 'student.assigned' }).events.length, 1);
+});
