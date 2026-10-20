@@ -347,3 +347,60 @@ test('a successful invitation-only worker check clears an old rate-limit error w
   const count = f.writes.length; f.advance(); await f.manager.access.tick();
   const c = f.manager.get(r.classroom.id); assert.equal(c.autoAccess.lastError, undefined); assert.equal(c.autoAccess.status, 'waiting'); assert.equal(c.status, 'pending'); assert.equal(f.writes.length, count);
 });
+
+test('paused runtime never blocks workspace access; new acceptances continue and runtime resumes after a database restart without duplicates', async t => {
+  const { ActivityLog } = require('../lib/activity-log'), { ClassAccess } = require('../lib/class-access');
+  const f = fixture(t, { database: true, students: [{ email: 'one@example.org', name: 'One', group: 'Gruppe 1' }, { email: 'two@example.org', name: 'Two', group: 'Gruppe 2' }] });
+  f.state.members = f.state.members.filter(m => !['one@example.org', 'two@example.org'].includes(m.email));
+  f.manager.audit = new ActivityLog(f.root);
+  const r = await f.provision(await f.draft()), groups = r.classroom.groups, before = f.writes.length;
+  const original = f.context.runtimeApi.runtime; let paused = true, runtimeWrites = 0;
+  f.context.runtimeApi.runtime = async (base, endpoint, request = {}) => {
+    if (paused) throw new ApiError('Runtime unavailable', 503);
+    if (request.method === 'PUT') runtimeWrites++;
+    return original(base, endpoint, request);
+  };
+  f.state.members.push({ email: 'one@example.org', roles: ['modeler'], invitePending: false });
+  f.advance(); await f.manager.access.tick();
+  let c = f.manager.get(r.classroom.id);
+  assert.equal(c.status, 'pending'); assert.equal(c.autoAccess.status, 'waiting_runtime'); assert.equal(c.autoAccess.runtimePending, true);
+  assert.ok(f.state.wm[groups[0].workspaceKey].some(m => m.email === 'one@example.org' && m.role === 'editor'));
+  assert.equal(f.writes.length - before, 1); assert.equal(runtimeWrites, 0); assert.equal(f.state.gu[groups[0].id].length, 0);
+  assert.match(c.pendingStudents.find(p => p.email === 'one@example.org').reason, /Workspace-Zugriff bestätigt/);
+  assert.equal(f.manager.audit.query({ event: 'student.assigned' }).events.length, 0);
+  dataStore.getStore(f.root).close(); dataStore.initializeStore(f.root); f.manager.audit = new ActivityLog(f.root); f.manager.access = new ClassAccess(f.manager);
+  f.state.members.push({ email: 'two@example.org', roles: ['modeler'], invitePending: false });
+  f.advance(); await f.manager.access.tick();
+  assert.ok(f.state.wm[groups[1].workspaceKey].some(m => m.email === 'two@example.org' && m.role === 'editor'));
+  const workspaceWrites = f.writes.filter(w => w.endpoint.endsWith('/members')).length;
+  f.advance(); await f.manager.access.tick(); assert.equal(f.writes.filter(w => w.endpoint.endsWith('/members')).length, workspaceWrites);
+  assert.equal(f.manager.audit.query({ event: 'student.workspace' }).events.length, 2); assert.equal(f.manager.audit.query({ event: 'student.runtime' }).events.length, 0);
+  paused = false; f.advance(); await f.manager.access.tick();
+  c = f.manager.get(r.classroom.id); assert.equal(c.status, 'ready'); assert.equal(c.autoAccess.status, 'completed'); assert.equal(c.autoAccess.runtimePending, false); assert.equal(c.autoAccess.lastError, undefined);
+  assert.equal(runtimeWrites, 2); assert.equal(f.writes.filter(w => w.endpoint.endsWith('/members')).length, workspaceWrites);
+  assert.equal(f.writes.filter(w => w.endpoint.startsWith('/members/')).length, 2);
+  assert.equal(f.manager.audit.query({ event: 'student.assigned' }).events.length, 2);
+});
+
+test('offline workspace phase still rejects changed workspaces, removed teacher administration and privileged students before any writes', async t => {
+  for (const change of ['workspace', 'teacher', 'privileged']) {
+    const f = fixture(t, { database: true, missingStudent: 'one@example.org' }), r = await f.provision(await f.draft()), g = r.classroom.groups[0];
+    f.state.members.push({ email: 'one@example.org', roles: change === 'privileged' ? ['admin'] : ['modeler'], invitePending: false });
+    if (change === 'workspace') f.state.workspaces.find(w => w.workspaceKey === g.workspaceKey).name = 'Foreign workspace';
+    if (change === 'teacher') f.state.wm[g.workspaceKey] = [];
+    let runtimeCalls = 0; f.context.runtimeApi.runtime = async () => { runtimeCalls++; throw new ApiError('Paused', 503); };
+    const before = f.writes.length; f.advance(); await f.manager.access.tick();
+    assert.equal(f.manager.get(r.classroom.id).autoAccess.status, 'stopped'); assert.equal(f.writes.length, before); assert.equal(runtimeCalls, 0);
+  }
+});
+
+test('foreign runtime rights stop the runtime phase after safe workspace assignment without granting runtime access', async t => {
+  const f = fixture(t, { database: true, missingStudent: 'one@example.org' }), r = await f.provision(await f.draft()), g = r.classroom.groups[0];
+  f.state.members.push({ email: 'one@example.org', roles: ['modeler'], invitePending: false });
+  f.state.gr[g.runtimeGroupId].push('admin');
+  const before = f.writes.length; f.advance(); await f.manager.access.tick();
+  const c = f.manager.get(r.classroom.id); assert.equal(c.autoAccess.status, 'stopped');
+  assert.ok(f.state.wm[g.workspaceKey].some(m => m.email === 'one@example.org'));
+  assert.equal(f.state.gu[g.runtimeGroupId].length, 0);
+  assert.ok(f.writes.slice(before).every(w => w.endpoint.endsWith('/members')));
+});

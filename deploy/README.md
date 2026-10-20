@@ -54,6 +54,18 @@ lokalen Dienst vor der Übernahme stoppen. Für reine lokale Entwicklung ist
 `CLASS_ACCESS_WORKER=disabled` ausschalten. Ohne OIDC kann die Anwendung nicht
 an eine öffentliche Adresse gebunden werden.
 
+Bei bereits bestätigter Klasseneinrichtung arbeitet die Automatik in zwei
+Phasen: Organisationsannahme und Editor-Zugriff auf den vorhandenen Gruppen-
+Workspace werden über den Hub geprüft und ergänzt, auch wenn der Cluster
+pausiert ist. Erst danach werden Runtime-Struktur und Tenant-Isolation geprüft
+und die Runtime-Benutzerzuordnungen ergänzt. Bei vorübergehend nicht erreichbarer
+Runtime bleibt die Klasse `pending` und die Automatik `waiting_runtime`; neue
+Workspace-Zuordnungen und Runtime-Verfügbarkeit werden jede Minute geprüft.
+Ein Neustart erhält Warteschlange und Anforderungsbelege. Unbestätigte
+Workspace-Anfragen werden nicht erneut gesendet. Geänderte Freigaben,
+privilegierte Konten und abweichende Runtime-Rechte stoppen weiterhin den Lauf.
+Die erstmalige Anlage einer Klassenstruktur benötigt einen laufenden Cluster.
+
 ## Betrieb
 
 ```sh
