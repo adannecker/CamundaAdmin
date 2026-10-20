@@ -76,7 +76,7 @@ test('open assignments separates invitations from missing access, only reads, an
   assert.ok(f.records.every(r => !r.options || r.options.method === 'POST' && r.endpoint.endsWith('/search')));
   f.state.orgPending = false; f.state.workspace = true; f.state.runtime = true;
   result = await f.service.get({}, true); assert.equal(result.summary.ready, 1); assert.equal(result.summary.invitations, 0);
-  assert.equal((await f.service.get()).summary.ready, 1); f.c.revision = 'changed'; assert.equal((await f.service.get()).summary.unknown, 1);
+  assert.equal((await f.service.get()).summary.ready, 1); f.c.groups[0].workspaceKey = 'changed'; assert.equal((await f.service.get()).summary.unknown, 1);
   assert.equal((await f.service.get({ lecturerEmail: 'someone-else@example.org' })).classes.length, 0);
   assert.equal((await f.service.get({ site: 'brugg' })).classes.length, 0);
 });
@@ -136,4 +136,39 @@ test('uncertain, old and other-site deletions never retire a new class; partial 
   receipt.checkedAt = '2026-10-18T10:00:00Z'; fs.writeFileSync(receiptFile, JSON.stringify(receipt)); assert.equal(reconcileClassCleanup(root), 1);
   const updated = JSON.parse(fs.readFileSync(file)).classes[0]; assert.equal(updated.status, 'attention'); assert.equal(updated.autoAccess.enabled, false);
   assert.deepEqual(updated.cleanupState.students, ['student@example.org']);
+});
+
+test('sidebar totals deduplicate people and require all memberships; stale and removed records are distinct', () => {
+ const { summarizeSites } = require('../lib/open-assignments');
+ const person = (email, ready, status = 'ready') => ({ email, ready, organization: { state: status }, workspace: { state: ready ? 'ready' : 'missing' }, runtime: { state: 'ready' }, rights: { state: 'ready' } });
+ const classes = [
+  { site: 'basel', classStatus: 'ready', checkedAt: '2026-10-20T10:00:00Z', groups: [{ students: [person('a@example.org', true), { ...person('removed@example.org', true), removed: true }] }] },
+  { site: 'basel', classStatus: 'pending', checkedAt: '2026-10-20T11:00:00Z', groups: [{ students: [person('a@example.org', false), person('b@example.org', false, 'pending')] }] },
+  { site: 'basel', classStatus: 'cleaned', checkedAt: null, groups: [{ students: [person('cleaned@example.org', true)] }] },
+ ];
+ const result = summarizeSites(classes).basel;
+ assert.equal(result.students, 2); assert.equal(result.ready, 0); assert.equal(result.invitations, 1); assert.equal(result.invitedOrActive, 2); assert.equal(result.checkedAt, '2026-10-20T10:00:00Z');
+ classes[1].checkedAt = null; assert.equal(summarizeSites(classes).basel.checkedAt, null);
+ assert.equal(summarizeSites(classes).olten.students, 0);
+});
+
+test('read-only observations log changes once and do not repeat unchanged checks', async t => {
+ const f = assignmentsFixture(t), events = [];
+ f.service.audit = { record: event => events.push(event) };
+ await f.service.get({}, true); assert.equal(events.length, 1);
+ await f.service.get({}, true); assert.equal(events.length, 1);
+ f.state.orgPending = false; f.state.workspace = true; f.state.runtime = true;
+ await f.service.get({}, true); assert.equal(events.length, 2); assert.equal(events[1].status, 'verified');
+ await f.service.get({}, true); assert.equal(events.length, 2);
+});
+
+test('worker timestamps do not invalidate access evidence but changed access targets do', async t => {
+ const f = assignmentsFixture(t);
+ f.state.orgPending = false; f.state.workspace = true; f.state.runtime = true;
+ await f.service.get({}, true); assert.equal(f.service.snapshot({}).summary.ready, 1);
+ f.c.revision = 'worker-revision'; f.c.autoAccess = { lastCheckAt: '2026-10-20T12:00:00Z', nextCheckAt: 123, status: 'waiting' }; f.c.pendingStudents = [];
+ assert.equal(f.service.snapshot({}).summary.ready, 1);
+ f.c.groups[0].runtimeGroupId = 'different-group';
+ assert.equal(f.service.snapshot({}).summary.ready, 0);
+ assert.equal(f.service.snapshot({}).summary.unknown, 1);
 });

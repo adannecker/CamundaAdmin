@@ -78,3 +78,17 @@ test('an expired session closes the wait overlay and later progress cannot cover
   const later = f.window.WaitOverlay.begin({ title: 'Weitere Anfrage' }); later.end();
   assert.equal(wait.showCount, shown); assert.equal(wait.open, false); assert.equal(login.showCount, 1);
 });
+
+test('automatic relogin restores CSRF without reloading or replaying writes', async () => {
+ let recovered = false, closed = false, opens = 0;
+ const f = fixture(undefined, async url => url.endsWith('/api/session') && recovered ? { ok: true, status: 200, json: async () => ({ mode: 'oidc', csrf: 'new-csrf' }) } : { status: 401 });
+ f.window.open = () => { opens++; return { close() { closed = true; } }; };
+ await f.window.fetch('/api/classes', { method: 'POST' });
+ assert.equal(opens, 1); assert.equal(f.window.SessionState.expired, true);
+ recovered = true; await vm.runInNewContext('window.dispatchEvent(new Event("focus"))', f.sandbox);
+ await new Promise(resolve => setImmediate(resolve));
+ assert.equal(f.window.SessionState.expired, false); assert.equal(closed, true);
+ assert.equal(f.requests.filter(r => r.init?.method === 'POST').length, 1);
+ await f.window.fetch('/api/classes', { method: 'POST' });
+ assert.equal(f.requests.at(-1).init.headers.get('x-csrf-token'), 'new-csrf');
+});

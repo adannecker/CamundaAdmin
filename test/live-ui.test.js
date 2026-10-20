@@ -13,7 +13,7 @@ async function fixture(response) {
     },
     querySelectorAll: () => [],
   };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8'), { document, fetch: async () => response, AbortSignal, setTimeout });
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/dashboard.js'), 'utf8'), { document, window: { addEventListener() {} }, fetch: async () => response, AbortSignal, setTimeout, setInterval: () => 0 });
   for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
   return elements;
 }

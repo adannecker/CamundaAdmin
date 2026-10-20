@@ -5,7 +5,21 @@ const liveResults = new Map(), startingClusters = new Set(), clusterWatches = ne
 const clusterStates = { Healthy: 'Läuft', Suspended: 'Pausiert', Resuming: 'Startet …', Creating: 'Wird angelegt', Updating: 'Wird aktualisiert', Unhealthy: 'Gestört', Maintenance: 'Wartung', WaitingForInput: 'Eingabe erforderlich' };
 const siteLabel = id => id[0].toUpperCase() + id.slice(1);
 const playIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l12-7z"/></svg>';
+function renderSidebarSites() {
+ const host = document.querySelector('#sidebar-sites'); if (!host) return;
+ host.innerHTML = ['basel', 'brugg', 'olten'].map(id => {
+  const result = liveResults.get(id), clusters = result?.clusters || [];
+  let state = 'unknown', label = 'Status unbekannt';
+  if (result?.ok && clusters.length) {
+   if (startingClusters.has(id) || clusters.some(c => c.start?.pending || ['Resuming', 'Creating', 'Updating'].includes(c.status))) { state = 'starting'; label = 'Startet'; }
+   else if (clusters.every(c => c.status === 'Healthy')) { state = 'live'; label = 'Live'; }
+   else if (clusters.every(c => c.status === 'Suspended')) { state = 'paused'; label = 'Pausiert'; }
+  }
+  return '<div class="sidebar-site" title="' + siteLabel(id) + ': ' + label + '" aria-label="' + siteLabel(id) + ': ' + label + '"><span class="site-dot ' + state + '" aria-hidden="true"></span><span>' + siteLabel(id) + '</span></div>';
+ }).join('');
+}
 function renderLiveCard(id, result) {
+ renderSidebarSites();
  const card = document.querySelector('#card-' + id); if (!card) return;
  card.innerHTML = '<h3>' + siteLabel(id) + '</h3><span class="badge ' + (result.ok ? 'ok' : 'bad') + '">' + (result.ok ? 'Console erreichbar' : 'Zugriff fehlgeschlagen') + '</span><p class="muted">' + escapeHtml(result.error || 'Authentifizierung und Clusterabfrage erfolgreich.') + '</p>' +
   (result.clusters || []).map(c => '<div class="live-cluster"><div class="live-cluster-heading"><strong>' + escapeHtml(c.name) + '</strong>' + (c.start && (c.status === 'Suspended' || c.start.pending) ? '<button type="button" class="cluster-play" data-cluster-start="' + id + '" data-cluster-id="' + escapeHtml(c.id) + '" aria-label="' + siteLabel(id) + ': Cluster starten" title="' + escapeHtml(c.start.pending ? c.start.message : 'Cluster starten') + '"' + (startingClusters.has(id) || c.start.pending ? ' disabled' : '') + '>' + playIcon + '</button>' : '') + '</div><span class="setup-state ' + (c.status === 'Healthy' ? 'ready' : 'unknown') + '">' + escapeHtml(startingClusters.has(id) ? 'Start wird angefordert …' : c.start?.pending && c.status === 'Suspended' ? 'Start wird nachgeprüft …' : clusterStates[c.status] || c.status) + '</span><p class="muted">' + escapeHtml(c.version) + ' · ' + escapeHtml(c.region) + '</p>' +
@@ -36,7 +50,7 @@ async function checkLive() {
  cards.innerHTML=['Basel','Brugg','Olten'].map(name=>'<article class="card" id="card-'+name.toLowerCase()+'"><h3>'+name+'</h3><p role="status">Verbindung wird geprüft …</p></article>').join('');
  await Promise.all(['basel','brugg','olten'].map(async id=>{
  try { const result = await readLiveSite(id); if (result.clusters?.some(c => c.start?.pending)) watchCluster(id); }
- catch(error){document.querySelector('#card-'+id).innerHTML='<h3>'+siteLabel(id)+'</h3><span class="badge'+(error.sessionExpired?'':' bad')+'">'+(error.sessionExpired?'Anmeldung erforderlich':'Prüfung fehlgeschlagen')+'</span><p>'+escapeHtml(error.message)+'</p>';}
+ catch(error){liveResults.delete(id); renderSidebarSites(); document.querySelector('#card-'+id).innerHTML='<h3>'+siteLabel(id)+'</h3><span class="badge'+(error.sessionExpired?'':' bad')+'">'+(error.sessionExpired?'Anmeldung erforderlich':'Prüfung fehlgeschlagen')+'</span><p>'+escapeHtml(error.message)+'</p>';}
  })); checking=false;document.querySelector('#refresh').disabled=false;
 }
 cards.addEventListener('click', async event => {
@@ -75,4 +89,43 @@ function renderCleanupAnalysis(result) {
   '<details class="analysis-detail"><summary>Was vor einer Löschung noch geprüft werden muss</summary><ul class="analysis-list">'+result.limitations.map(l=>'<li>'+escapeHtml(l)+'</li>').join('')+'</ul></details>';
 }
 
+renderSidebarSites();
 checkLive();
+let sidebarPolling = false;
+setInterval(async () => {
+ if (document.hidden || checking || sidebarPolling) return;
+ sidebarPolling = true;
+ try {
+  for (const id of ['basel', 'brugg', 'olten']) {
+   if (clusterWatches.has(id) || startingClusters.has(id)) continue;
+   try { await readLiveSite(id, true); }
+   catch { liveResults.delete(id); renderSidebarSites(); }
+  }
+ } finally { sidebarPolling = false; }
+}, 60000);
+
+
+let assignmentSummaryBusy = false;
+async function loadAssignmentSummary(refresh = false) {
+ if (assignmentSummaryBusy || window.SessionState?.expired) return;
+ assignmentSummaryBusy = true;
+ const button = document.querySelector('#sidebar-check'), host = document.querySelector('#sidebar-assignments'), note = document.querySelector('#sidebar-check-status');
+ button.disabled = true; if (refresh) note.textContent = 'Live-Abgleich läuft …';
+ try {
+  const response = await fetch('/api/operations/pending' + (refresh ? '?refresh=1' : ''), { signal: AbortSignal.timeout(180000) });
+  if (!response.ok) throw Error('Prüfstand derzeit nicht erreichbar.');
+  const data = await response.json();
+  host.innerHTML = ['basel', 'brugg', 'olten'].map(id => {
+   const s = data.sites?.[id]; if (!s) return '';
+   const stale = !s.checkedAt || Date.now() - Date.parse(s.checkedAt) > 10 * 60000;
+   return '<div class="sidebar-assignment"><strong>' + siteLabel(id) + '</strong><dl>' + [[s.students,'Erfasst'],[s.invitedOrActive,'Eingel./aktiv'],[s.invitations,'Offen'],[s.ready,'Vollständig'],[s.assignments,'Fehlt/prüfen'],[s.unknown,'Unbestätigt']].map(([n,label]) => '<div><dt>' + label + '</dt><dd>' + n + '</dd></div>').join('') + '</dl><small>' + (stale ? 'Stand nicht aktuell · ' : 'Geprüft · ') + (s.checkedAt ? escapeHtml(new Date(s.checkedAt).toLocaleString('de-CH')) : 'noch keine vollständige Prüfung') + '</small></div>';
+  }).join('');
+  note.textContent = refresh ? 'Live-Stand abgeglichen.' : 'Automatischer Abgleich: alle 5 Min.';
+  host.title = 'Personen je Standort einmal. Vollständig: alle Klassenzugriffe bestätigt. Eingeladen/aktiv: aktueller Organisationsstand, keine historische Versandzahl. Kategorien können sich überschneiden.';
+ } catch (error) { note.textContent = error.message; }
+ finally { assignmentSummaryBusy = false; button.disabled = false; }
+}
+document.querySelector('#sidebar-check').addEventListener('click', () => loadAssignmentSummary(true));
+window.addEventListener('session-restored', () => loadAssignmentSummary());
+setInterval(() => { if (!document.hidden) loadAssignmentSummary(); }, 60000);
+loadAssignmentSummary();

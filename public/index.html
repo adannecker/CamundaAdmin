@@ -21,6 +21,8 @@
 <aside>
   <div class="brand"><span>Camunda</span> Admin</div><p class="sidebar-label">Bereiche</p>
   <nav class="sections"><button class="active" data-section="live">Live</button><button data-section="pending">Offene Zuweisungen</button><button data-section="activity">Ereignisprotokoll</button><button data-section="cleanup">Cleanup · Analyse</button><button data-section="students">Klassen &amp; Gruppen</button><button data-section="setup">Admin · Standorte</button><button data-section="admin">Admin · Dozenten</button></nav>
+  <section class="sidebar-sites" aria-label="Standortstatus"><p class="sidebar-label">Standorte</p><div id="sidebar-sites" aria-live="polite"></div></section>
+  <section class="sidebar-assignments" aria-label="Einladungen und Zuweisungen"><p class="sidebar-label">Studierende</p><div id="sidebar-assignments" aria-live="polite">Prüfstand wird geladen …</div><button type="button" id="sidebar-check" class="action">Live-Stand prüfen</button><p id="sidebar-check-status" role="status"></p></section>
   <div class="read-only">Verwaltung mit Vorschau<br><small>Cleanup nur nach Auswahl und Bestätigung.</small></div>
 </aside>
 <main>

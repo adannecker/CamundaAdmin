@@ -43,8 +43,8 @@ test('full workbook transmission includes later rows, extra sheets and long cell
   await assert.rejects(analyzeRoster({ sheets: [{ name: 'Gross', rows: [{ row: 1, cells: ['x'.repeat(500001)] }] }] }, { config: {}, fetchImpl: async () => assert.fail('No truncated request') }), /nichts an OpenAI/);
 });
 
-test('invented names, groups, emails, sources and missing people reject the entire AI result', async () => {
-  for (const change of [a => a.students.pop(), a => a.students[0].name = 'Erfunden', a => a.students[0].email = 'invented@example.org', a => a.students[0].group = 'Admin', a => a.students[0].row = 99, a => a.students[0].sheetIndex = 99, a => a.students[1] = a.students[0]]) {
+test('invented groups, emails, sources and missing people reject the entire AI result', async () => {
+  for (const change of [a => a.students.pop(), a => a.students[0].email = 'invented@example.org', a => a.students[0].group = 'Admin', a => a.students[0].row = 99, a => a.students[0].sheetIndex = 99, a => a.students[1] = a.students[0]]) {
     const modified = structuredClone(analysis); change(modified);
     await assert.rejects(analyzeRoster(workbook, { config: { apiKey: 'key', model: 'model' }, fetchImpl: async () => response(modified) }), /KI-/);
   }
@@ -61,4 +61,13 @@ test('bounded XLSX reader extracts Unicode text and rejects dangerous XML and un
   const result = await readExcel(make(files), 'liste.xlsx'); assert.equal(result.sheets[0].rows[1].cells[1], 'Änne');
   await assert.rejects(readExcel(make({ ...files, 'xl/worksheets/sheet1.xml': '<!DOCTYPE x [<!ENTITY x "xx">]><x/>' }), 'liste.xlsx'), /Entitäten/);
   await assert.rejects(readExcel(make(files), 'liste.xls'), /xlsx/);
+});
+
+test('display names and email casing do not block a source-verified email/group import', async () => {
+ const modified = structuredClone(analysis);
+ modified.students[0].name = 'Example, Ada'; modified.students[0].email = ' ADA@EXAMPLE.ORG ';
+ const result = await analyzeRoster(workbook, { config: { apiKey: 'key', model: 'model' }, fetchImpl: async () => response(modified) });
+ assert.equal(result.students[0].email, 'ada@example.org');
+ assert.equal(result.students[0].name, 'Ada Example');
+ assert.equal(result.students[0].group, 'Gruppe 1');
 });

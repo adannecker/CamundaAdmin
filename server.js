@@ -60,7 +60,7 @@ reconcileClassCleanup(ROOT);
 const applyCleanup = cleanup.apply.bind(cleanup);
 cleanup.apply = async (...args) => { const result = await applyCleanup(...args); reconcileClassCleanup(ROOT, { busy: classroom.busy }); return result; };
 const activity = new ActivityLog(ROOT);
-const assignments = new OpenAssignments({ root: ROOT, classroom, contextForSite: cleanupContext });
+const assignments = new OpenAssignments({ root: ROOT, classroom, contextForSite: cleanupContext, audit: activity });
 activity.importReceipts(classroom.load().classes);
 classroom.audit = activity;
 const classInfo = c => c ? { site: c.site, classId: c.id, lecturerEmail: c.lecturerEmail } : {};
@@ -1252,9 +1252,16 @@ async function start() {
       else response.end();
     });
   });
+  const observeAssignments = async () => {
+    if (classroom.busy || assignments.running || classroom.cleanup?.busy?.size) return;
+    try { await assignments.get({}, true); }
+    catch { console.error('Lesender Zuweisungsabgleich fehlgeschlagen; letzter Prüfstand bleibt erhalten.'); }
+  };
   server.listen(PORT, HOST, () => {
     activity.record({ event: 'service.start', status: 'completed', actor: 'Dienst', summary: 'Camunda Admin gestartet; bestehende Belege als Historie übernommen.' });
     console.log(`Camunda Admin läuft auf http://${HOST}:${PORT}${webAuth.config.basePath}/ (${webAuth.config.mode})`);
+    setInterval(observeAssignments, 5 * 60000).unref();
+    setTimeout(observeAssignments, 20000).unref();
     if (process.env.CLASS_ACCESS_WORKER !== 'disabled') {
       setInterval(completeClassAccess, 60000).unref();
       setTimeout(completeClassAccess, 5000).unref();

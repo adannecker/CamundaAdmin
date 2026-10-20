@@ -134,3 +134,10 @@ das alte Ereignis-DB-Dateiset im eigenen Datenordner. Veränderte oder nicht
 migrierte Quelldateien stoppen sie. Secrets und Backups werden nicht entfernt.
 Bei einer Rücknahme alten Code und den vollständigen vorherigen Datenstand
 zusammen wiederherstellen; niemals zwei unabhängige Worker starten.
+
+
+## Statusanzeige und erneute Anmeldung (20.10.2026)
+
+Der zusätzliche lesende Statusabgleich läuft alle fünf Minuten im Dienst, auch ohne Browser. Er persistiert den Zugriffsstand und neue/geänderte Beobachtungen im Ereignisprotokoll, ohne Camunda-Zuweisungen zu ändern. Die Klassen-Zuweisungsautomatik ist davon getrennt. Die kompakte Sidebar lädt gespeicherte Zähler jede Minute und bietet einen expliziten Live-Abgleich. Nach Neustart sind zunächst frühere oder ungeprüfte Stände möglich; Prüfzeit beachten.
+
+Die einstündige Sitzung bleibt unverändert begrenzt. Die Arbeitsseite versucht nach Ablauf eine Anmeldung in einem separaten AAI-Fenster und übernimmt bei Erfolg den neuen CSRF-Token ohne Seitenreload. Browser müssen Popups erlauben; erforderliche AAI-Bestätigungen bleiben interaktiv. Nicht abgeschlossene Schreibaufrufe werden nicht automatisch wiederholt. Explizites Abmelden startet keinen automatischen Login.
